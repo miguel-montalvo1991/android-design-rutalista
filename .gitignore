@@ -13,3 +13,21 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+
+# --- Secretos: NUNCA se suben a GitHub ---
+.env
+*.env
+!.env.example
+*.jks
+*.keystore
+
+# --- Base de datos local del backend (contiene datos personales) ---
+*.db
+*.sqlite
+
+# --- Node.js (backend, más adelante) ---
+node_modules/
+
+# --- Archivos de sistema operativo ---
+Thumbs.db
