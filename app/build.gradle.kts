@@ -52,4 +52,17 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
+
+    // --- RutaLista: librerías que agregamos nosotros ---
+
+    // Retrofit: permite llamar a la API de OpenRouteService desde Kotlin
+    implementation("com.squareup.retrofit2:retrofit:2.11.0")
+    // Convertidor Gson: transforma el JSON que responde la API en clases de Kotlin
+    implementation("com.squareup.retrofit2:converter-gson:2.11.0")
+    // Corrutinas: permiten hacer la llamada a internet sin congelar la pantalla
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    // ViewModel para Compose: guarda el estado de la pantalla (capa ViewModel de MVVM)
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+    // Navegación entre pantallas (la usa el colaborador  Diego)
+    implementation("androidx.navigation:navigation-compose:2.8.5")
 }
