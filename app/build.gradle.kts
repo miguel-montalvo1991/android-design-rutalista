@@ -1,13 +1,21 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
 }
 
+// Lee local.properties (este archivo NO se sube a Git)
+val localProps = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) {
+        file.inputStream().use { load(it) }
+    }
+}
+
 android {
     namespace = "com.rutalista.app"
-    compileSdk {
-        version = release(37)
-    }
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.rutalista.app"
@@ -17,52 +25,70 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Crea la constante BuildConfig.ORS_API_KEY para usarla en el código
+        buildConfigField(
+            "String",
+            "ORS_API_KEY",
+            "\"${localProps.getProperty("ORS_API_KEY", "")}\""
+        )
     }
 
     buildTypes {
         release {
-            optimization {
-                enable = true
-                packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
-            }
+            isMinifyEnabled = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
+
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
+
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
 dependencies {
+    // Compose BOM
     implementation(platform(libs.androidx.compose.bom))
+
+    // Base
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
-    implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.navigation.compose)
+
+    // UI
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
-    implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.compose.material3)
+
+    // Red
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.converter.gson)
+    implementation(libs.okhttp.logging.interceptor)
+
+    // Corrutinas
+    implementation(libs.kotlinx.coroutines.android)
+
+    // Tests
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
-    androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
-    debugImplementation(libs.androidx.compose.ui.test.manifest)
+    androidTestImplementation(libs.androidx.espresso.core)
+
+    // Debug
     debugImplementation(libs.androidx.compose.ui.tooling)
-
-    // --- RutaLista: librerías que agregamos nosotros ---
-
-    // Retrofit: permite llamar a la API de OpenRouteService desde Kotlin
-    implementation("com.squareup.retrofit2:retrofit:2.11.0")
-    // Convertidor Gson: transforma el JSON que responde la API en clases de Kotlin
-    implementation("com.squareup.retrofit2:converter-gson:2.11.0")
-    // Corrutinas: permiten hacer la llamada a internet sin congelar la pantalla
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-    // ViewModel para Compose: guarda el estado de la pantalla (capa ViewModel de MVVM)
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
-    // Navegación entre pantallas (la usa el colaborador  Diego)
-    implementation("androidx.navigation:navigation-compose:2.8.5")
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
