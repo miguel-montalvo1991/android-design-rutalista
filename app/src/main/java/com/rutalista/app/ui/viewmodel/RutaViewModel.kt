@@ -79,9 +79,16 @@ class RutaViewModel(
         _busqueda.value = BusquedaUiState.Inicial
     }
 
-    // AGREGAR DESTINO
-    fun agregar(direccion: Direccion) {
+
+    // AGREGAR DESTINO (devuelve false si ya estaba en la lista)
+    fun agregar(direccion: Direccion): Boolean {
+        val yaExiste = _pedidos.value.any {
+            kotlin.math.abs(it.lat - direccion.lat) < 0.00001 &&
+                    kotlin.math.abs(it.lon - direccion.lon) < 0.00001
+        }
+        if (yaExiste) return false
         _pedidos.value = _pedidos.value + direccion
+        return true
     }
 
     // ELIMINAR DESTINO

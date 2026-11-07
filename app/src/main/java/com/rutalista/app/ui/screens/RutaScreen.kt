@@ -30,7 +30,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import com.rutalista.app.data.model.Direccion
 import com.rutalista.app.ui.components.HeaderRutaLista
 import com.rutalista.app.ui.components.MapaSeleccionDialog
 import com.rutalista.app.ui.theme.*
@@ -268,7 +267,14 @@ fun RutaScreen(viewModel: RutaViewModel) {
 
                                 OutlinedButton(
                                     onClick = {
-                                        viewModel.agregar(direccion)
+                                        // COMMIT 2: agregar() devuelve false si el destino
+                                        // ya estaba en la lista; usamos ese resultado para avisar.
+                                        val agregado = viewModel.agregar(direccion)
+                                        Toast.makeText(
+                                            context,
+                                            if (agregado) "Destino agregado" else "Ese destino ya está en la lista",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
                                         viewModel.limpiarBusqueda()
                                         textoBusqueda = ""
                                     },
@@ -689,7 +695,13 @@ fun RutaScreen(viewModel: RutaViewModel) {
                     viewModel.reemplazarDestino(indexReemplazarDestino!!, direccionSeleccionada)
                     indexReemplazarDestino = null
                 } else {
-                    viewModel.agregar(direccionSeleccionada)
+                    // COMMIT 2: mismo aviso que en la búsqueda manual
+                    val agregado = viewModel.agregar(direccionSeleccionada)
+                    Toast.makeText(
+                        context,
+                        if (agregado) "Destino agregado" else "Ese destino ya está en la lista",
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
                 mostrarMapaDialog = false
             },
