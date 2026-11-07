@@ -1,57 +1,236 @@
 package com.rutalista.app.ui.viewmodel
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rutalista.app.data.model.Direccion
-import kotlinx.coroutines.delay
+import com.rutalista.app.data.model.OptimizacionResponse
+import com.rutalista.app.data.repository.RutaRepository
+import java.util.Locale
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-/**
- * ViewModel: guarda el estado que las pantallas muestran y recibe sus acciones.
- * Sobrevive a rotaciones de pantalla.
- *
- * VERSIÓN DE PRUEBA: inventa resultados. En L4 la cambiamos por la API real
- * SIN modificar los nombres públicos, para que Diego no tenga que tocar nada.
- */
-class RutaViewModel : ViewModel() {
+class RutaViewModel(
+    private val repository: RutaRepository = RutaRepository()
+) : ViewModel() {
 
-    // Estado de la búsqueda. "_busqueda" es privado y se puede modificar aquí dentro.
+    private val _origen = MutableStateFlow<Direccion?>(null)
+    val origen: StateFlow<Direccion?> = _origen.asStateFlow()
+
     private val _busqueda = MutableStateFlow<BusquedaUiState>(BusquedaUiState.Inicial)
-
-    // "busqueda" es público y de solo lectura: las pantallas solo pueden mirarlo.
     val busqueda: StateFlow<BusquedaUiState> = _busqueda.asStateFlow()
 
-    // Lista de direcciones que el domiciliario ya agregó a su jornada.
     private val _pedidos = MutableStateFlow<List<Direccion>>(emptyList())
     val pedidos: StateFlow<List<Direccion>> = _pedidos.asStateFlow()
 
-    /** Busca una dirección. Por ahora devuelve resultados falsos. */
-    fun buscar(texto: String) {
-        if (texto.isBlank()) return // no buscar si el campo está vacío
+    private val _ruta = MutableStateFlow<RutaUiState>(RutaUiState.Inicial)
+    val ruta: StateFlow<RutaUiState> = _ruta.asStateFlow()
 
-        // launch inicia una corrutina: trabajo en segundo plano sin congelar la pantalla.
+    private val _optimizacion = MutableStateFlow<OptimizacionUiState>(OptimizacionUiState.Inicial)
+    val optimizacion: StateFlow<OptimizacionUiState> = _optimizacion.asStateFlow()
+
+    private val _ubicacionGps = MutableStateFlow<UbicacionGpsUiState>(UbicacionGpsUiState.Inicial)
+    val ubicacionGps: StateFlow<UbicacionGpsUiState> = _ubicacionGps.asStateFlow()
+
+    private val _geocodificacionMapa = MutableStateFlow<GeocodeMapaUiState>(GeocodeMapaUiState.Inicial)
+    val geocodificacionMapa: StateFlow<GeocodeMapaUiState> = _geocodificacionMapa.asStateFlow()
+
+    // ESTABLECER Y GESTIONAR ORIGEN
+    fun establecerOrigen(direccion: Direccion?) {
+        _origen.value = direccion
+    }
+
+    // BUSCAR DIRECCIONES MANUALMENTE
+    fun buscar(texto: String) {
+        if (texto.isBlank()) {
+            _busqueda.value = BusquedaUiState.Inicial
+            return
+        }
+
         viewModelScope.launch {
             _busqueda.value = BusquedaUiState.Cargando
-            delay(600) // simula lo que tarda internet
-            _busqueda.value = BusquedaUiState.Exito(
-                listOf(
-                    Direccion("$texto, Medellín (falso 1)", 6.2476, -75.5636),
-                    Direccion("$texto, Envigado (falso 2)", 6.1759, -75.5917)
+
+            try {
+                repository.buscarDireccion(texto).fold(
+                    onSuccess = {
+                        _busqueda.value = BusquedaUiState.Exito(it)
+                    },
+                    onFailure = {
+                        _busqueda.value = BusquedaUiState.Error(
+                            it.message ?: "Error al buscar direcciones."
+                        )
+                    }
                 )
-            )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _busqueda.value = BusquedaUiState.Error(
+                    e.message ?: "Error inesperado."
+                )
+            }
         }
     }
 
-    /** Agrega una dirección a la lista de pedidos. */
+    // Limpiar búsqueda
+    fun limpiarBusqueda() {
+        _busqueda.value = BusquedaUiState.Inicial
+    }
+
+    // AGREGAR DESTINO
     fun agregar(direccion: Direccion) {
         _pedidos.value = _pedidos.value + direccion
     }
 
-    /** Quita una dirección de la lista de pedidos. */
+    // ELIMINAR DESTINO
     fun quitar(direccion: Direccion) {
         _pedidos.value = _pedidos.value - direccion
     }
+
+    // REEMPLAZAR DESTINO
+    fun reemplazarDestino(index: Int, nuevaDireccion: Direccion) {
+        val listaActual = _pedidos.value.toMutableList()
+        if (index in listaActual.indices) {
+            listaActual[index] = nuevaDireccion
+            _pedidos.value = listaActual
+        }
+    }
+
+    // OBTENER UBICACIÓN ACTUAL POR GPS
+    fun obtenerUbicacionGps(
+        context: Context,
+        esOrigen: Boolean = false,
+        indexDestino: Int? = null
+    ) {
+        viewModelScope.launch {
+            _ubicacionGps.value = UbicacionGpsUiState.Cargando
+            repository.obtenerUbicacionActualGps(context).fold(
+                onSuccess = { direccion ->
+                    _ubicacionGps.value = UbicacionGpsUiState.Exito(direccion)
+                    if (esOrigen) {
+                        establecerOrigen(direccion)
+                    } else if (indexDestino != null) {
+                        reemplazarDestino(indexDestino, direccion)
+                    } else {
+                        agregar(direccion)
+                    }
+                },
+                onFailure = { error ->
+                    _ubicacionGps.value = UbicacionGpsUiState.Error(
+                        error.message ?: "No se pudo obtener la ubicación GPS."
+                    )
+                }
+            )
+        }
+    }
+
+    // GEOCODIFICAR PUNTO EN MAPA
+    fun geocodificarPuntoMapa(lat: Double, lon: Double, onResultado: (Direccion) -> Unit) {
+        viewModelScope.launch {
+            _geocodificacionMapa.value = GeocodeMapaUiState.Cargando
+            repository.obtenerDireccionDesdeCoordenadas(lat, lon).fold(
+                onSuccess = { direccion ->
+                    _geocodificacionMapa.value = GeocodeMapaUiState.Exito(direccion)
+                    onResultado(direccion)
+                },
+                onFailure = {
+                    val fallback = Direccion(
+                        texto = String.format(Locale.US, "Mapa (%.5f, %.5f)", lat, lon),
+                        lat = lat,
+                        lon = lon
+                    )
+                    _geocodificacionMapa.value = GeocodeMapaUiState.Exito(fallback)
+                    onResultado(fallback)
+                }
+            )
+        }
+    }
+
+    // CALCULAR RUTA
+    fun calcularRuta(origen: Direccion? = _origen.value) {
+        if (origen == null) {
+            _ruta.value = RutaUiState.Error("Selecciona un origen primero.")
+            return
+        }
+        val destinos = _pedidos.value
+
+        viewModelScope.launch {
+            _ruta.value = RutaUiState.Cargando
+
+            try {
+                repository.calcularRuta(origen, destinos).fold(
+                    onSuccess = {
+                        _ruta.value = RutaUiState.Exito(it)
+                    },
+                    onFailure = {
+                        _ruta.value = RutaUiState.Error(
+                            it.message ?: "Error al calcular la ruta."
+                        )
+                    }
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _ruta.value = RutaUiState.Error(
+                    e.message ?: "Error inesperado."
+                )
+            }
+        }
+    }
+
+    // OPTIMIZAR DESTINOS
+    fun optimizarRuta(origen: Direccion? = _origen.value) {
+        if (origen == null) {
+            _optimizacion.value = OptimizacionUiState.Error("Selecciona un origen primero.")
+            return
+        }
+        val destinos = _pedidos.value
+
+        viewModelScope.launch {
+            _optimizacion.value = OptimizacionUiState.Cargando
+
+            try {
+                repository.optimizarRuta(origen, destinos).fold(
+                    onSuccess = {
+                        _optimizacion.value = OptimizacionUiState.Exito(it)
+                    },
+                    onFailure = {
+                        _optimizacion.value = OptimizacionUiState.Error(
+                            it.message ?: "Error al optimizar la ruta."
+                        )
+                    }
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _optimizacion.value = OptimizacionUiState.Error(
+                    e.message ?: "Error inesperado."
+                )
+            }
+        }
+    }
+}
+
+// ESTADOS DE OPTIMIZACIÓN Y UBICACIÓN
+sealed interface OptimizacionUiState {
+    data object Inicial : OptimizacionUiState
+    data object Cargando : OptimizacionUiState
+    data class Exito(val resultado: OptimizacionResponse) : OptimizacionUiState
+    data class Error(val mensaje: String) : OptimizacionUiState
+}
+
+sealed interface UbicacionGpsUiState {
+    data object Inicial : UbicacionGpsUiState
+    data object Cargando : UbicacionGpsUiState
+    data class Exito(val direccion: Direccion) : UbicacionGpsUiState
+    data class Error(val mensaje: String) : UbicacionGpsUiState
+}
+
+sealed interface GeocodeMapaUiState {
+    data object Inicial : GeocodeMapaUiState
+    data object Cargando : GeocodeMapaUiState
+    data class Exito(val direccion: Direccion) : GeocodeMapaUiState
+    data class Error(val mensaje: String) : GeocodeMapaUiState
 }

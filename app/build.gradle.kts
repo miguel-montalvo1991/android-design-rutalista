@@ -72,6 +72,8 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons.core)
+    implementation(libs.androidx.compose.material.icons.extended)
 
     // Red
     implementation(libs.retrofit)
@@ -80,6 +82,10 @@ dependencies {
 
     // Corrutinas
     implementation(libs.kotlinx.coroutines.android)
+
+    // Mapas y Ubicación
+    implementation(libs.osmdroid.android)
+    implementation(libs.play.services.location)
 
     // Tests
     testImplementation(libs.junit)
