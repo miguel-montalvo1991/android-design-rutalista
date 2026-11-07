@@ -227,8 +227,14 @@ fun RutaScreen(viewModel: RutaViewModel) {
                             is BusquedaUiState.Inicial -> Unit
 
                             is BusquedaUiState.Exito -> {
+                                val cantidad = (busqueda as BusquedaUiState.Exito).resultados.size
                                 Text(
-                                    text = "Sugerencias encontradas (${(busqueda as BusquedaUiState.Exito).resultados.size}):",
+                                    // con 0 resultados avisamos en vez de mostrar "(0)"
+                                    text = if (cantidad == 0) {
+                                        "No se encontraron direcciones"
+                                    } else {
+                                        "Sugerencias encontradas ($cantidad):"
+                                    },
                                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = PrimaryNavy)
                                 )
                             }
