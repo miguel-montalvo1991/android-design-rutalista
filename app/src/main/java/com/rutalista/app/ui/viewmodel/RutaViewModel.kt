@@ -1,5 +1,4 @@
 package com.rutalista.app.ui.viewmodel
-
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -12,6 +11,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import com.rutalista.app.core.PolylineDecoder
+
 
 class RutaViewModel(
     private val repository: RutaRepository = RutaRepository()
@@ -179,8 +180,16 @@ class RutaViewModel(
 
             try {
                 repository.calcularRuta(origen, destinos).fold(
-                    onSuccess = {
-                        _ruta.value = RutaUiState.Exito(it)
+                    onSuccess = { rutaDetalle ->
+                        // El texto "geometry" de ORS se decodifica aquí, en el ViewModel,
+                        // para que la vista solo reciba puntos listos y no tenga lógica.
+                        // Si geometry viene nulo se guarda una lista vacía (el mapa avisará).
+                        _ruta.value = RutaUiState.Exito(
+                            ruta = rutaDetalle,
+                            origen = origen,
+                            destinos = destinos,
+                            puntosRuta = PolylineDecoder.decodificar(rutaDetalle.geometry.orEmpty())
+                        )
                     },
                     onFailure = {
                         _ruta.value = RutaUiState.Error(
