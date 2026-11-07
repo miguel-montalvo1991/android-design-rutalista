@@ -34,6 +34,8 @@ import com.rutalista.app.ui.components.HeaderRutaLista
 import com.rutalista.app.ui.components.MapaSeleccionDialog
 import com.rutalista.app.ui.theme.*
 import com.rutalista.app.ui.viewmodel.*
+import java.util.Locale
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -225,8 +227,14 @@ fun RutaScreen(viewModel: RutaViewModel) {
                             is BusquedaUiState.Inicial -> Unit
 
                             is BusquedaUiState.Exito -> {
+                                val cantidad = (busqueda as BusquedaUiState.Exito).resultados.size
                                 Text(
-                                    text = "Sugerencias encontradas (${(busqueda as BusquedaUiState.Exito).resultados.size}):",
+                                    // con 0 resultados avisamos en vez de mostrar "(0)"
+                                    text = if (cantidad == 0) {
+                                        "No se encontraron direcciones"
+                                    } else {
+                                        "Sugerencias encontradas ($cantidad):"
+                                    },
                                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = PrimaryNavy)
                                 )
                             }
@@ -267,7 +275,7 @@ fun RutaScreen(viewModel: RutaViewModel) {
 
                                 OutlinedButton(
                                     onClick = {
-                                        // COMMIT 2: agregar() devuelve false si el destino
+                                        // agregar() devuelve false si el destino
                                         // ya estaba en la lista; usamos ese resultado para avisar.
                                         val agregado = viewModel.agregar(direccion)
                                         Toast.makeText(
@@ -589,8 +597,9 @@ fun RutaScreen(viewModel: RutaViewModel) {
                                     text = "Resultado de la Ruta",
                                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = PrimaryNavy)
                                 )
-                                Text("Distancia total: ${(resultado.summary?.distance ?: 0.0) / 1000.0} km")
-                                Text("Duración estimada: ${(resultado.summary?.duration ?: 0.0) / 60.0} min")
+                                //  distancia y duración con formato legible
+                                Text("Distancia total: ${formatearDistancia(resultado.summary?.distance ?: 0.0)}")
+                                Text("Duración estimada: ${formatearDuracion(resultado.summary?.duration ?: 0.0)}")
                             }
                         }
                     }
@@ -648,8 +657,11 @@ fun RutaScreen(viewModel: RutaViewModel) {
                                 )
 
                                 resultado.routes.forEach { recorrido ->
-                                    Text("Distancia total: ${recorrido.distance / 1000.0} km")
-                                    Text("Duración estimada: ${recorrido.duration / 60.0} min")
+                                    //  si la API devuelve distancia 0, no se muestra "0,0 km"
+                                    if (recorrido.distance.toDouble() > 0.0) {
+                                        Text("Distancia total: ${formatearDistancia(recorrido.distance.toDouble())}")
+                                    }
+                                    Text("Duración estimada: ${formatearDuracion(recorrido.duration.toDouble())}")
 
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text("Secuencia de paradas sugerida:", fontWeight = FontWeight.Bold)
@@ -695,7 +707,7 @@ fun RutaScreen(viewModel: RutaViewModel) {
                     viewModel.reemplazarDestino(indexReemplazarDestino!!, direccionSeleccionada)
                     indexReemplazarDestino = null
                 } else {
-                    // COMMIT 2: mismo aviso que en la búsqueda manual
+                    //  mismo aviso que en la búsqueda manual
                     val agregado = viewModel.agregar(direccionSeleccionada)
                     Toast.makeText(
                         context,
@@ -714,4 +726,14 @@ fun RutaScreen(viewModel: RutaViewModel) {
             }
         )
     }
+}
+
+//  convierte metros a texto legible, por ejemplo "12,3 km".
+private fun formatearDistancia(metros: Double): String =
+    String.format(Locale.forLanguageTag("es-CO"), "%.1f km", metros / 1000.0)
+
+// convierte segundos a minutos enteros, o a horas y minutos si pasa de 60.
+private fun formatearDuracion(segundos: Double): String {
+    val minutos = (segundos / 60.0).roundToInt()
+    return if (minutos < 60) "$minutos min" else "${minutos / 60} h ${minutos % 60} min"
 }

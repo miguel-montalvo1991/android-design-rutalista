@@ -1,7 +1,12 @@
 package com.rutalista.app.data.repository
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.location.Location
+import android.location.LocationManager
+import androidx.core.content.ContextCompat
+import androidx.core.location.LocationManagerCompat
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.rutalista.app.BuildConfig
@@ -25,7 +30,7 @@ class RutaRepository(
     private val api: OrsApi = RetrofitClient.api
 ) {
 
-    // COMMIT 3: convierte un error HTTP en un mensaje claro para el usuario.
+    // convierte un error HTTP en un mensaje claro para el usuario.
     // Lo usan las tres llamadas a la API (búsqueda, ruta y optimización),
     // así los mensajes son iguales en todas y no se repite código.
     // "accion" describe lo que se intentaba hacer, por ejemplo "calcular la ruta".
@@ -105,6 +110,20 @@ class RutaRepository(
 
     // Obtener ubicación GPS actual del dispositivo
     suspend fun obtenerUbicacionActualGps(context: Context): Result<Direccion> {
+        //  antes de pedir la ubicación se revisan, en este orden, el permiso
+        // y el estado del GPS, para dar un mensaje específico en cada caso.
+        val tienePermiso =
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (!tienePermiso) {
+            return Result.failure(Exception("Permiso de ubicación denegado."))
+        }
+
+        val locationManager = ContextCompat.getSystemService(context, LocationManager::class.java)
+        if (locationManager != null && !LocationManagerCompat.isLocationEnabled(locationManager)) {
+            return Result.failure(Exception("El GPS está apagado. Enciende la ubicación del dispositivo e inténtalo de nuevo."))
+        }
+
         return try {
             val fusedClient = LocationServices.getFusedLocationProviderClient(context)
             val location = suspendCancellableCoroutine<Location?> { cont ->
@@ -142,7 +161,8 @@ class RutaRepository(
                     Result.success(Direccion(texto = nombreGps, lat = location.latitude, lon = location.longitude))
                 }
             } else {
-                Result.failure(Exception("No se pudo obtener la señal GPS del dispositivo."))
+                //  permiso y GPS ya están en orden, así que el fallo es de señal
+                Result.failure(Exception("No se pudo obtener la señal GPS. Prueba al aire libre e inténtalo de nuevo."))
             }
 
         } catch (e: SecurityException) {
