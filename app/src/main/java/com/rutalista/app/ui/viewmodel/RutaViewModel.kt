@@ -38,9 +38,18 @@ class RutaViewModel(
     private val _geocodificacionMapa = MutableStateFlow<GeocodeMapaUiState>(GeocodeMapaUiState.Inicial)
     val geocodificacionMapa: StateFlow<GeocodeMapaUiState> = _geocodificacionMapa.asStateFlow()
 
+    // COMMIT 4a: borra la ruta y la optimización anteriores.
+    // Se llama cada vez que cambian el origen o los destinos, porque
+    // el resultado viejo ya no corresponde a los datos actuales.
+    private fun reiniciarResultados() {
+        _ruta.value = RutaUiState.Inicial
+        _optimizacion.value = OptimizacionUiState.Inicial
+    }
+
     // ESTABLECER Y GESTIONAR ORIGEN
     fun establecerOrigen(direccion: Direccion?) {
         _origen.value = direccion
+        reiniciarResultados()
     }
 
     // BUSCAR DIRECCIONES MANUALMENTE
@@ -79,7 +88,6 @@ class RutaViewModel(
         _busqueda.value = BusquedaUiState.Inicial
     }
 
-
     // AGREGAR DESTINO (devuelve false si ya estaba en la lista)
     fun agregar(direccion: Direccion): Boolean {
         val yaExiste = _pedidos.value.any {
@@ -88,12 +96,14 @@ class RutaViewModel(
         }
         if (yaExiste) return false
         _pedidos.value = _pedidos.value + direccion
+        reiniciarResultados() // COMMIT 4a: la lista cambió
         return true
     }
 
     // ELIMINAR DESTINO
     fun quitar(direccion: Direccion) {
         _pedidos.value = _pedidos.value - direccion
+        reiniciarResultados() // COMMIT 4a: la lista cambió
     }
 
     // REEMPLAZAR DESTINO
@@ -102,6 +112,7 @@ class RutaViewModel(
         if (index in listaActual.indices) {
             listaActual[index] = nuevaDireccion
             _pedidos.value = listaActual
+            reiniciarResultados() // COMMIT 4a: la lista cambió
         }
     }
 
