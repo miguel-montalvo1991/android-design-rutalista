@@ -275,7 +275,7 @@ fun RutaScreen(viewModel: RutaViewModel) {
 
                                 OutlinedButton(
                                     onClick = {
-                                        // COMMIT 2: agregar() devuelve false si el destino
+                                        // agregar() devuelve false si el destino
                                         // ya estaba en la lista; usamos ese resultado para avisar.
                                         val agregado = viewModel.agregar(direccion)
                                         Toast.makeText(
@@ -707,7 +707,7 @@ fun RutaScreen(viewModel: RutaViewModel) {
                     viewModel.reemplazarDestino(indexReemplazarDestino!!, direccionSeleccionada)
                     indexReemplazarDestino = null
                 } else {
-                    // COMMIT 2: mismo aviso que en la búsqueda manual
+                    //  mismo aviso que en la búsqueda manual
                     val agregado = viewModel.agregar(direccionSeleccionada)
                     Toast.makeText(
                         context,
