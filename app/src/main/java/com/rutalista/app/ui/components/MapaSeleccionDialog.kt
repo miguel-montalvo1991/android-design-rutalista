@@ -30,6 +30,21 @@ import org.osmdroid.views.overlay.MapEventsOverlay
 import org.osmdroid.views.overlay.Marker
 import java.util.Locale
 
+// Osmdroid se configura una sola vez por proceso y siempre ANTES de crear el MapView.
+// Si se configura después, el mapa puede salir gris porque aún no tiene el user agent
+// ni la carpeta de caché.
+private var osmdroidConfigurado = false
+
+private fun configurarOsmdroid(context: Context) {
+    if (osmdroidConfigurado) return
+    Configuration.getInstance().load(
+        context,
+        context.getSharedPreferences("osmdroid", Context.MODE_PRIVATE)
+    )
+    Configuration.getInstance().userAgentValue = context.packageName
+    osmdroidConfigurado = true
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MapaSeleccionDialog(
@@ -40,14 +55,8 @@ fun MapaSeleccionDialog(
 ) {
     val context = LocalContext.current
 
-    // Inicializar configuración de Osmdroid
-    LaunchedEffect(Unit) {
-        Configuration.getInstance().load(
-            context,
-            context.getSharedPreferences("osmdroid", Context.MODE_PRIVATE)
-        )
-        Configuration.getInstance().userAgentValue = context.packageName
-    }
+    // Se ejecuta durante la composición, antes de que AndroidView cree el MapView
+    remember(context) { configurarOsmdroid(context) }
 
     var latitudSeleccionada by remember {
         mutableDoubleStateOf(puntoInicial?.lat ?: 6.2476)
@@ -55,6 +64,10 @@ fun MapaSeleccionDialog(
     var longitudSeleccionada by remember {
         mutableDoubleStateOf(puntoInicial?.lon ?: -75.5636)
     }
+
+    // Solo se puede confirmar si hay un punto inicial o si el usuario tocó el mapa.
+    // Las coordenadas por defecto son solo el centro de la vista, no una selección.
+    var puntoElegido by remember { mutableStateOf(puntoInicial != null) }
 
     var direccionPreview by remember {
         mutableStateOf(
@@ -67,6 +80,11 @@ fun MapaSeleccionDialog(
         )
     }
     var cargandoGeocode by remember { mutableStateOf(false) }
+
+    // Número de la última consulta de dirección. Una respuesta solo se aplica si
+    // su número sigue siendo el actual; así una respuesta lenta de un toque anterior
+    // no pisa la dirección del punto más reciente.
+    var idSolicitud by remember { mutableIntStateOf(0) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -118,6 +136,8 @@ fun MapaSeleccionDialog(
                                 position = startPoint
                                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                                 title = "Punto Seleccionado"
+                                // Sin punto inicial el marcador queda oculto hasta el primer toque
+                                isEnabled = puntoInicial != null
                             }
                             overlays.add(marker)
 
@@ -126,14 +146,30 @@ fun MapaSeleccionDialog(
                                     p?.let { point ->
                                         latitudSeleccionada = point.latitude
                                         longitudSeleccionada = point.longitude
+                                        puntoElegido = true
 
                                         marker.position = point
+                                        marker.isEnabled = true
                                         invalidate()
 
+                                        // Mientras llega la dirección, la vista previa muestra las
+                                        // coordenadas del nuevo punto (no la dirección del anterior).
+                                        // Si la geocodificación falla, se conservan estas coordenadas.
+                                        direccionPreview = String.format(
+                                            Locale.US,
+                                            "Lat: %.5f, Lon: %.5f",
+                                            point.latitude,
+                                            point.longitude
+                                        )
+
                                         cargandoGeocode = true
+                                        idSolicitud += 1
+                                        val miSolicitud = idSolicitud
                                         onGeocodificarRequest(point.latitude, point.longitude) { dir ->
-                                            direccionPreview = dir.texto
-                                            cargandoGeocode = false
+                                            if (miSolicitud == idSolicitud) {
+                                                direccionPreview = dir.texto
+                                                cargandoGeocode = false
+                                            }
                                         }
                                     }
                                     return true
@@ -180,7 +216,12 @@ fun MapaSeleccionDialog(
                             )
                         }
 
-                        if (cargandoGeocode) {
+                        if (!puntoElegido) {
+                            Text(
+                                text = "Toca el mapa para elegir un punto.",
+                                style = MaterialTheme.typography.bodyMedium.copy(color = Color.White)
+                            )
+                        } else if (cargandoGeocode) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(16.dp),
@@ -197,15 +238,17 @@ fun MapaSeleccionDialog(
                             )
                         }
 
-                        Text(
-                            text = String.format(
-                                Locale.US,
-                                "Lat: %.5f | Lon: %.5f",
-                                latitudSeleccionada,
-                                longitudSeleccionada
-                            ),
-                            style = MaterialTheme.typography.bodySmall.copy(color = Color.White.copy(alpha = 0.7f))
-                        )
+                        if (puntoElegido) {
+                            Text(
+                                text = String.format(
+                                    Locale.US,
+                                    "Lat: %.5f | Lon: %.5f",
+                                    latitudSeleccionada,
+                                    longitudSeleccionada
+                                ),
+                                style = MaterialTheme.typography.bodySmall.copy(color = Color.White.copy(alpha = 0.7f))
+                            )
+                        }
 
                         Spacer(modifier = Modifier.height(4.dp))
 
@@ -219,10 +262,14 @@ fun MapaSeleccionDialog(
                                     )
                                 )
                             },
+                            // No se confirma sin haber elegido un punto ni mientras se carga la dirección
+                            enabled = puntoElegido && !cargandoGeocode,
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = AccentYellow,
-                                contentColor = PrimaryNavy
+                                contentColor = PrimaryNavy,
+                                disabledContainerColor = AccentYellow.copy(alpha = 0.4f),
+                                disabledContentColor = PrimaryNavy.copy(alpha = 0.6f)
                             ),
                             shape = RoundedCornerShape(12.dp)
                         ) {
