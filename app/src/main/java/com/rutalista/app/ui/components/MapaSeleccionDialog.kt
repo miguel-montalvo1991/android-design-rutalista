@@ -35,7 +35,7 @@ import java.util.Locale
 // ni la carpeta de caché.
 private var osmdroidConfigurado = false
 
-private fun configurarOsmdroid(context: Context) {
+internal fun configurarOsmdroid(context: Context) {
     if (osmdroidConfigurado) return
     Configuration.getInstance().load(
         context,
