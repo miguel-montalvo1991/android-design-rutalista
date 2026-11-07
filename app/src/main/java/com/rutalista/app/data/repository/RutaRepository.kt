@@ -30,7 +30,7 @@ class RutaRepository(
     private val api: OrsApi = RetrofitClient.api
 ) {
 
-    // COMMIT 3: convierte un error HTTP en un mensaje claro para el usuario.
+    // convierte un error HTTP en un mensaje claro para el usuario.
     // Lo usan las tres llamadas a la API (búsqueda, ruta y optimización),
     // así los mensajes son iguales en todas y no se repite código.
     // "accion" describe lo que se intentaba hacer, por ejemplo "calcular la ruta".
@@ -110,7 +110,7 @@ class RutaRepository(
 
     // Obtener ubicación GPS actual del dispositivo
     suspend fun obtenerUbicacionActualGps(context: Context): Result<Direccion> {
-        // COMMIT 6a: antes de pedir la ubicación se revisan, en este orden, el permiso
+        //  antes de pedir la ubicación se revisan, en este orden, el permiso
         // y el estado del GPS, para dar un mensaje específico en cada caso.
         val tienePermiso =
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
@@ -161,7 +161,7 @@ class RutaRepository(
                     Result.success(Direccion(texto = nombreGps, lat = location.latitude, lon = location.longitude))
                 }
             } else {
-                // COMMIT 6a: permiso y GPS ya están en orden, así que el fallo es de señal
+                //  permiso y GPS ya están en orden, así que el fallo es de señal
                 Result.failure(Exception("No se pudo obtener la señal GPS. Prueba al aire libre e inténtalo de nuevo."))
             }
 
