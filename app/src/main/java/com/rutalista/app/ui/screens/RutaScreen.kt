@@ -1,5 +1,8 @@
 package com.rutalista.app.ui.screens
 
+
+import com.rutalista.app.ui.components.MapaRutaDialog
+import com.rutalista.app.ui.components.HeaderRutaLista
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -49,6 +52,7 @@ fun RutaScreen(viewModel: RutaViewModel) {
     var indexReemplazarDestino by remember { mutableStateOf<Int?>(null) }
 
     var mostrarMapaDialog by remember { mutableStateOf(false) }
+    var mostrarMapaRuta by remember { mutableStateOf(false) }
 
     val origen by viewModel.origen.collectAsState()
     val busqueda by viewModel.busqueda.collectAsState()
@@ -600,6 +604,19 @@ fun RutaScreen(viewModel: RutaViewModel) {
                                 //  distancia y duración con formato legible
                                 Text("Distancia total: ${formatearDistancia(resultado.summary?.distance ?: 0.0)}")
                                 Text("Duración estimada: ${formatearDuracion(resultado.summary?.duration ?: 0.0)}")
+                                Button(
+                                    onClick = { mostrarMapaRuta = true },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = PrimaryNavy,
+                                        contentColor = Color.White
+                                    ),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Icon(imageVector = Icons.Default.Map, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Ver ruta en el mapa", fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
@@ -692,6 +709,17 @@ fun RutaScreen(viewModel: RutaViewModel) {
                 }
             }
         }
+    }
+
+    // Mapa a pantalla completa con la ruta calculada
+    val estadoRuta = ruta
+    if (mostrarMapaRuta && estadoRuta is RutaUiState.Exito) {
+        MapaRutaDialog(
+            origen = estadoRuta.origen,
+            destinos = estadoRuta.destinos,
+            puntosRuta = estadoRuta.puntosRuta,
+            onDismiss = { mostrarMapaRuta = false }
+        )
     }
 
     // Modal de Mapa osmdroid
