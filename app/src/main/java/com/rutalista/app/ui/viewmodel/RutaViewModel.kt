@@ -1,5 +1,4 @@
 package com.rutalista.app.ui.viewmodel
-
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -12,6 +11,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import com.rutalista.app.core.PolylineDecoder
+
 
 class RutaViewModel(
     private val repository: RutaRepository = RutaRepository()
@@ -38,9 +39,18 @@ class RutaViewModel(
     private val _geocodificacionMapa = MutableStateFlow<GeocodeMapaUiState>(GeocodeMapaUiState.Inicial)
     val geocodificacionMapa: StateFlow<GeocodeMapaUiState> = _geocodificacionMapa.asStateFlow()
 
+    // COMMIT 4a: borra la ruta y la optimización anteriores.
+    // Se llama cada vez que cambian el origen o los destinos, porque
+    // el resultado viejo ya no corresponde a los datos actuales.
+    private fun reiniciarResultados() {
+        _ruta.value = RutaUiState.Inicial
+        _optimizacion.value = OptimizacionUiState.Inicial
+    }
+
     // ESTABLECER Y GESTIONAR ORIGEN
     fun establecerOrigen(direccion: Direccion?) {
         _origen.value = direccion
+        reiniciarResultados()
     }
 
     // BUSCAR DIRECCIONES MANUALMENTE
@@ -79,14 +89,22 @@ class RutaViewModel(
         _busqueda.value = BusquedaUiState.Inicial
     }
 
-    // AGREGAR DESTINO
-    fun agregar(direccion: Direccion) {
+    // AGREGAR DESTINO (devuelve false si ya estaba en la lista)
+    fun agregar(direccion: Direccion): Boolean {
+        val yaExiste = _pedidos.value.any {
+            kotlin.math.abs(it.lat - direccion.lat) < 0.00001 &&
+                    kotlin.math.abs(it.lon - direccion.lon) < 0.00001
+        }
+        if (yaExiste) return false
         _pedidos.value = _pedidos.value + direccion
+        reiniciarResultados() // COMMIT 4a: la lista cambió
+        return true
     }
 
     // ELIMINAR DESTINO
     fun quitar(direccion: Direccion) {
         _pedidos.value = _pedidos.value - direccion
+        reiniciarResultados() // COMMIT 4a: la lista cambió
     }
 
     // REEMPLAZAR DESTINO
@@ -95,6 +113,7 @@ class RutaViewModel(
         if (index in listaActual.indices) {
             listaActual[index] = nuevaDireccion
             _pedidos.value = listaActual
+            reiniciarResultados() // COMMIT 4a: la lista cambió
         }
     }
 
@@ -161,8 +180,16 @@ class RutaViewModel(
 
             try {
                 repository.calcularRuta(origen, destinos).fold(
-                    onSuccess = {
-                        _ruta.value = RutaUiState.Exito(it)
+                    onSuccess = { rutaDetalle ->
+                        // El texto "geometry" de ORS se decodifica aquí, en el ViewModel,
+                        // para que la vista solo reciba puntos listos y no tenga lógica.
+                        // Si geometry viene nulo se guarda una lista vacía (el mapa avisará).
+                        _ruta.value = RutaUiState.Exito(
+                            ruta = rutaDetalle,
+                            origen = origen,
+                            destinos = destinos,
+                            puntosRuta = PolylineDecoder.decodificar(rutaDetalle.geometry.orEmpty())
+                        )
                     },
                     onFailure = {
                         _ruta.value = RutaUiState.Error(

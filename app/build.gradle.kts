@@ -30,7 +30,7 @@ android {
         buildConfigField(
             "String",
             "ORS_API_KEY",
-            "\"${localProps.getProperty("ORS_API_KEY", "")}\""
+            "\"${localProps.getProperty("ORS_API_KEY","").trim()}\""
         )
     }
 

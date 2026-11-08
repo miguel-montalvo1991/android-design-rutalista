@@ -1,8 +1,12 @@
-
 package com.rutalista.app.data.repository
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.location.Location
+import android.location.LocationManager
+import androidx.core.content.ContextCompat
+import androidx.core.location.LocationManagerCompat
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.rutalista.app.BuildConfig
@@ -16,6 +20,7 @@ import com.rutalista.app.data.model.VehiculoRuta
 import com.rutalista.app.data.remote.OrsApi
 import com.rutalista.app.data.remote.RetrofitClient
 import java.io.IOException
+import java.net.SocketTimeoutException
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.coroutines.resume
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -24,6 +29,20 @@ import retrofit2.HttpException
 class RutaRepository(
     private val api: OrsApi = RetrofitClient.api
 ) {
+
+    // convierte un error HTTP en un mensaje claro para el usuario.
+    // Lo usan las tres llamadas a la API (búsqueda, ruta y optimización),
+    // así los mensajes son iguales en todas y no se repite código.
+    // "accion" describe lo que se intentaba hacer, por ejemplo "calcular la ruta".
+    // Importante: el mensaje nunca incluye la clave de API.
+    private fun mensajeParaHttp(e: HttpException, accion: String): String {
+        return when (e.code()) {
+            401 -> "La clave de API falta o no es válida."
+            403 -> "Acceso prohibido: la clave no tiene permiso para este servicio o tiene una restricción."
+            429 -> "Se superó el límite de consultas. Espera un momento e inténtalo de nuevo."
+            else -> "No se pudo $accion (error ${e.code()})."
+        }
+    }
 
     // Buscar direcciones
     suspend fun buscarDireccion(texto: String): Result<List<Direccion>> {
@@ -44,14 +63,16 @@ class RutaRepository(
             Result.success(direcciones)
 
         } catch (e: HttpException) {
-            val mensaje = when (e.code()) {
-                401, 403 -> "La clave de API no es válida."
-                429 -> "Se superó el límite de consultas."
-                else -> "Error del servidor (${e.code()})."
-            }
-            Result.failure(Exception(mensaje))
+            // El servidor respondió con un código de error (401, 403, 429, etc.)
+            Result.failure(Exception(mensajeParaHttp(e, "buscar la dirección")))
+
+        } catch (e: SocketTimeoutException) {
+            // Hay internet, pero el servicio tardó demasiado en responder.
+            // Va antes que IOException porque es un tipo más específico de ella.
+            Result.failure(Exception("El servicio tardó demasiado en responder."))
 
         } catch (e: IOException) {
+            // Falla de red: sin internet, modo avión, etc.
             Result.failure(Exception("Sin conexión a internet."))
 
         } catch (e: CancellationException) {
@@ -89,6 +110,20 @@ class RutaRepository(
 
     // Obtener ubicación GPS actual del dispositivo
     suspend fun obtenerUbicacionActualGps(context: Context): Result<Direccion> {
+        //  antes de pedir la ubicación se revisan, en este orden, el permiso
+        // y el estado del GPS, para dar un mensaje específico en cada caso.
+        val tienePermiso =
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (!tienePermiso) {
+            return Result.failure(Exception("Permiso de ubicación denegado."))
+        }
+
+        val locationManager = ContextCompat.getSystemService(context, LocationManager::class.java)
+        if (locationManager != null && !LocationManagerCompat.isLocationEnabled(locationManager)) {
+            return Result.failure(Exception("El GPS está apagado. Enciende la ubicación del dispositivo e inténtalo de nuevo."))
+        }
+
         return try {
             val fusedClient = LocationServices.getFusedLocationProviderClient(context)
             val location = suspendCancellableCoroutine<Location?> { cont ->
@@ -126,7 +161,8 @@ class RutaRepository(
                     Result.success(Direccion(texto = nombreGps, lat = location.latitude, lon = location.longitude))
                 }
             } else {
-                Result.failure(Exception("No se pudo obtener la señal GPS del dispositivo."))
+                //  permiso y GPS ya están en orden, así que el fallo es de señal
+                Result.failure(Exception("No se pudo obtener la señal GPS. Prueba al aire libre e inténtalo de nuevo."))
             }
 
         } catch (e: SecurityException) {
@@ -168,9 +204,11 @@ class RutaRepository(
             Result.success(ruta)
 
         } catch (e: HttpException) {
-            Result.failure(
-                Exception("Error al calcular la ruta (${e.code()}).")
-            )
+            // Mismos mensajes que en la búsqueda: 401, 403, 429 y otros
+            Result.failure(Exception(mensajeParaHttp(e, "calcular la ruta")))
+
+        } catch (e: SocketTimeoutException) {
+            Result.failure(Exception("El servicio tardó demasiado en responder."))
 
         } catch (e: IOException) {
             Result.failure(Exception("Sin conexión a internet."))
@@ -228,9 +266,10 @@ class RutaRepository(
             Result.success(respuesta)
 
         } catch (e: HttpException) {
-            Result.failure(
-                Exception("Error al optimizar la ruta (${e.code()}).")
-            )
+            Result.failure(Exception(mensajeParaHttp(e, "optimizar la ruta")))
+
+        } catch (e: SocketTimeoutException) {
+            Result.failure(Exception("El servicio tardó demasiado en responder."))
 
         } catch (e: IOException) {
             Result.failure(Exception("Sin conexión a internet."))
