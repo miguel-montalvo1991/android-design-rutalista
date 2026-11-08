@@ -5,7 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import com.rutalista.app.ui.screens.RutaScreen
+import com.rutalista.app.navigation.RutaListaNavGraph
 import com.rutalista.app.ui.theme.RutaListaTheme
 import com.rutalista.app.ui.viewmodel.RutaViewModel
 
@@ -19,7 +19,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             RutaListaTheme {
-                RutaScreen(viewModel = rutaViewModel)
+                RutaListaNavGraph(rutaViewModel = rutaViewModel)
             }
         }
     }
