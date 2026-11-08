@@ -11,9 +11,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.rutalista.app.ui.screens.RutaScreen
+import com.rutalista.app.ui.viewmodel.RutaViewModel
 
 sealed class Destination(val route: String, val title: String) {
     data object Home : Destination("home", "Inicio")
@@ -37,29 +40,35 @@ private val flow = listOf(
 )
 
 @Composable
-fun RutaListaNavGraph() {
+fun RutaListaNavGraph(
+    rutaViewModel: RutaViewModel = viewModel()
+) {
     val navController = rememberNavController()
 
     NavHost(navController = navController, startDestination = Destination.Home.route) {
         flow.forEachIndexed { index, destination ->
             composable(destination.route) {
-                val isLast = index == flow.lastIndex
-                PlaceholderScreen(
-                    title = destination.title,
-                    nextLabel = if (isLast) "Volver al inicio" else "Ir a ${flow[index + 1].title}",
-                    onNext = {
-                        if (isLast) {
-                            navController.navigate(Destination.Home.route) {
-                                popUpTo(Destination.Home.route) { inclusive = true }
+                if (destination == Destination.Home) {
+                    RutaScreen(viewModel = rutaViewModel)
+                } else {
+                    val isLast = index == flow.lastIndex
+                    PlaceholderScreen(
+                        title = destination.title,
+                        nextLabel = if (isLast) "Volver al inicio" else "Ir a ${flow[index + 1].title}",
+                        onNext = {
+                            if (isLast) {
+                                navController.navigate(Destination.Home.route) {
+                                    popUpTo(Destination.Home.route) { inclusive = true }
+                                }
+                            } else {
+                                navController.navigate(flow[index + 1].route)
                             }
-                        } else {
-                            navController.navigate(flow[index + 1].route)
-                        }
-                    },
-                    onBack = if (index > 0) {
-                        { navController.popBackStack() }
-                    } else null
-                )
+                        },
+                        onBack = if (index > 0) {
+                            { navController.popBackStack() }
+                        } else null
+                    )
+                }
             }
         }
     }
