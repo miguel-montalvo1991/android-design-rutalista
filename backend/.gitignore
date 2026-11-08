@@ -1,0 +1,13 @@
+# Dependencias: se reinstalan con "npm install", no se suben a GitHub
+node_modules/
+
+# Base de datos local: contiene datos personales de pedidos, nunca al repo
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+
+# Variables de entorno: aquí irá la clave de ORS
+.env
+.env.*
