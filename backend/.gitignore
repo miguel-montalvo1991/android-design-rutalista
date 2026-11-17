@@ -1,6 +1,9 @@
 # Dependencias: se reinstalan con "npm install", no se suben a GitHub
 node_modules/
 
+# Carpeta de bases de datos locales (guarda rutalista.db y no debe subirse al repo por privacidad)
+data/
+
 # Base de datos local: contiene datos personales de pedidos, nunca al repo
 *.db
 *.db-journal
