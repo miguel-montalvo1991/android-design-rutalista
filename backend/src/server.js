@@ -2,9 +2,12 @@
 // Punto de entrada: arranca el servidor HTTP con la app definida en app.js.
 
 const { crearApp } = require('./app');
+const { createDatabase } = require('./db/database');
 
 // Puerto: si existe la variable de entorno PORT la usa; si no, 3000
 const PORT = process.env.PORT || 3000;
+
+createDatabase();
 
 const app = crearApp();
 
