@@ -68,6 +68,36 @@ function coordenadasOpcionales(cuerpo) {
   return { latitude, longitude };
 }
 
+// Valida todos los campos editables de un pedido y devuelve los datos listos para guardar.
+// "actual" es el pedido existente (solo en actualizaciones): si no se envía paymentStatus
+// o sourceText, se conservan los valores actuales en lugar de reiniciarlos.
+function validarDatos(cuerpo, actual = null) {
+  // Si no se envía el estado de pago: se conserva el actual o, en un pedido nuevo,
+  // queda pendiente de confirmar (nunca se asume pagado)
+  const paymentStatus = cuerpo.paymentStatus ?? actual?.paymentStatus ?? 'PENDING_CONFIRMATION';
+  if (!ESTADOS_PAGO.includes(paymentStatus)) {
+    throw error400(`"paymentStatus" debe ser uno de: ${ESTADOS_PAGO.join(', ')}`);
+  }
+
+  return {
+    customerName: textoObligatorio(cuerpo, 'customerName', 100),
+    phone: telefonoOpcional(cuerpo),
+    addressText: textoObligatorio(cuerpo, 'addressText', 200),
+    neighborhood: textoOpcional(cuerpo, 'neighborhood', 100),
+    municipality: textoOpcional(cuerpo, 'municipality', 100),
+    ...coordenadasOpcionales(cuerpo),
+    productDescription: textoOpcional(cuerpo, 'productDescription', 300),
+    paymentStatus,
+    deadlineAt: fechaOpcional(cuerpo, 'deadlineAt'),
+    notes: textoOpcional(cuerpo, 'notes', 500),
+    // El texto original solo se reemplaza si el cliente lo envía explícitamente
+    sourceText:
+      actual && cuerpo.sourceText === undefined
+        ? actual.sourceText
+        : textoOpcional(cuerpo, 'sourceText', 2000),
+  };
+}
+
 function crearServicioPedidos(repositorioPedidos, repositorioJornadas) {
   // El id llega como texto en la URL: debe ser un entero positivo (ej. "3", no "abc" ni "1.5")
   function validarId(texto, nombre) {
@@ -84,35 +114,29 @@ function crearServicioPedidos(repositorioPedidos, repositorioJornadas) {
     return jornada;
   }
 
+  // Igual que obtenerJornada, pero además exige que esté abierta (para crear, editar y borrar)
+  function obtenerJornadaAbierta(workdayIdTexto) {
+    const jornada = obtenerJornada(workdayIdTexto);
+    if (jornada.status !== 'OPEN') {
+      throw new ApiError(409, 'WORKDAY_CLOSED', 'La jornada está cerrada y no admite cambios en sus pedidos');
+    }
+    return jornada;
+  }
+
+  // Busca un pedido dentro de una jornada o lanza 404
+  function obtenerPedido(jornada, orderIdTexto) {
+    const orderId = validarId(orderIdTexto, 'del pedido');
+    const pedido = repositorioPedidos.obtenerEnJornada(jornada.id, orderId);
+    if (!pedido) {
+      throw new ApiError(404, 'NOT_FOUND', `No existe el pedido ${orderIdTexto} en la jornada ${jornada.id}`);
+    }
+    return pedido;
+  }
+
   return {
     crear(workdayIdTexto, cuerpo = {}) {
-      // 1. La jornada debe existir y estar abierta
-      const jornada = obtenerJornada(workdayIdTexto);
-      if (jornada.status !== 'OPEN') {
-        throw new ApiError(409, 'WORKDAY_CLOSED', 'La jornada está cerrada y no admite pedidos nuevos');
-      }
-
-      // 2. Estado de pago: si no se envía, queda pendiente de confirmar (nunca se asume pagado)
-      const paymentStatus = cuerpo.paymentStatus ?? 'PENDING_CONFIRMATION';
-      if (!ESTADOS_PAGO.includes(paymentStatus)) {
-        throw error400(`"paymentStatus" debe ser uno de: ${ESTADOS_PAGO.join(', ')}`);
-      }
-
-      // 3. Valida el resto de campos y guarda
-      return repositorioPedidos.crear({
-        workdayId: jornada.id,
-        customerName: textoObligatorio(cuerpo, 'customerName', 100),
-        phone: telefonoOpcional(cuerpo),
-        addressText: textoObligatorio(cuerpo, 'addressText', 200),
-        neighborhood: textoOpcional(cuerpo, 'neighborhood', 100),
-        municipality: textoOpcional(cuerpo, 'municipality', 100),
-        ...coordenadasOpcionales(cuerpo),
-        productDescription: textoOpcional(cuerpo, 'productDescription', 300),
-        paymentStatus,
-        deadlineAt: fechaOpcional(cuerpo, 'deadlineAt'),
-        notes: textoOpcional(cuerpo, 'notes', 500),
-        sourceText: textoOpcional(cuerpo, 'sourceText', 2000),
-      });
+      const jornada = obtenerJornadaAbierta(workdayIdTexto);
+      return repositorioPedidos.crear({ workdayId: jornada.id, ...validarDatos(cuerpo) });
     },
 
     // Lista los pedidos de una jornada (también las cerradas, para consultar el historial)
@@ -124,13 +148,26 @@ function crearServicioPedidos(repositorioPedidos, repositorioJornadas) {
     // Consulta un pedido concreto de una jornada
     obtener(workdayIdTexto, orderIdTexto) {
       const jornada = obtenerJornada(workdayIdTexto);
-      const orderId = validarId(orderIdTexto, 'del pedido');
+      return obtenerPedido(jornada, orderIdTexto);
+    },
 
-      const pedido = repositorioPedidos.obtenerEnJornada(jornada.id, orderId);
-      if (!pedido) {
-        throw new ApiError(404, 'NOT_FOUND', `No existe el pedido ${orderIdTexto} en la jornada ${workdayIdTexto}`);
-      }
-      return pedido;
+    // Actualiza los datos editables de un pedido
+    actualizar(workdayIdTexto, orderIdTexto, cuerpo = {}) {
+      const jornada = obtenerJornadaAbierta(workdayIdTexto);
+      const actual = obtenerPedido(jornada, orderIdTexto);
+
+      return repositorioPedidos.actualizar({
+        id: actual.id,
+        workdayId: jornada.id,
+        ...validarDatos(cuerpo, actual),
+      });
+    },
+
+    // Elimina un pedido
+    eliminar(workdayIdTexto, orderIdTexto) {
+      const jornada = obtenerJornadaAbierta(workdayIdTexto);
+      const pedido = obtenerPedido(jornada, orderIdTexto);
+      repositorioPedidos.eliminar(jornada.id, pedido.id);
     },
   };
 }

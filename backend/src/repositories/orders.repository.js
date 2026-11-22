@@ -49,6 +49,26 @@ function crearRepositorioPedidos(db) {
     'SELECT * FROM delivery_orders WHERE id = ? AND workday_id = ?'
   );
 
+  // Actualiza solo los datos editables; el estado de entrega y la posición NO se tocan aquí
+  const actualizar = db.prepare(`
+    UPDATE delivery_orders SET
+      customer_name       = @customerName,
+      phone               = @phone,
+      address_text        = @addressText,
+      neighborhood        = @neighborhood,
+      municipality        = @municipality,
+      latitude            = @latitude,
+      longitude           = @longitude,
+      product_description = @productDescription,
+      payment_status      = @paymentStatus,
+      deadline_at         = @deadlineAt,
+      notes               = @notes,
+      source_text         = @sourceText
+    WHERE id = @id AND workday_id = @workdayId
+  `);
+
+  const borrar = db.prepare('DELETE FROM delivery_orders WHERE id = ? AND workday_id = ?');
+
   return {
     // Inserta el pedido y devuelve el registro completo ya guardado
     crear(datos) {
@@ -65,6 +85,17 @@ function crearRepositorioPedidos(db) {
     obtenerEnJornada(workdayId, orderId) {
       const fila = buscarEnJornada.get(orderId, workdayId);
       return fila ? aModelo(fila) : null;
+    },
+
+    // Guarda los cambios y devuelve el pedido ya actualizado
+    actualizar(datos) {
+      actualizar.run(datos);
+      return aModelo(buscarPorId.get(datos.id));
+    },
+
+    // Borra el pedido; devuelve true si existía y se borró
+    eliminar(workdayId, orderId) {
+      return borrar.run(orderId, workdayId).changes > 0;
     },
   };
 }

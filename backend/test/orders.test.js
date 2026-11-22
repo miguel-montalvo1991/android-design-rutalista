@@ -238,3 +238,135 @@ test('GET orders valida los ids y la existencia de la jornada', async () => {
     servidor.close();
   }
 });
+
+// PUT con cuerpo JSON
+function put(url, ruta, cuerpo) {
+  return fetch(`${url}${ruta}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cuerpo),
+  });
+}
+
+// DELETE simple
+function eliminar(url, ruta) {
+  return fetch(`${url}${ruta}`, { method: 'DELETE' });
+}
+
+test('PUT orders actualiza los datos y conserva el estado de pago si no se envía', async () => {
+  const { servidor, url } = await iniciar();
+  try {
+    const id = await crearJornada(url);
+    const creado = await (
+      await post(url, `/workdays/${id}/orders`, {
+        customerName: 'Cliente Original',
+        addressText: 'Calle 1 # 2-3',
+        phone: '3001234567',
+        paymentStatus: 'COLLECT_ON_DELIVERY',
+      })
+    ).json();
+
+    const res = await put(url, `/workdays/${id}/orders/${creado.id}`, {
+      customerName: 'Cliente Corregido',
+      addressText: 'Carrera 50 # 10-20',
+      municipality: 'Bello',
+    });
+    const pedido = await res.json();
+
+    assert.equal(res.status, 200);
+    assert.equal(pedido.customerName, 'Cliente Corregido');
+    assert.equal(pedido.municipality, 'Bello');
+    assert.equal(pedido.phone, null);                           // lo no enviado se vacía
+    assert.equal(pedido.paymentStatus, 'COLLECT_ON_DELIVERY'); // el pago se conserva
+    assert.equal(pedido.deliveryStatus, 'PENDING');
+  } finally {
+    servidor.close();
+  }
+});
+
+test('PUT orders puede cambiar el estado de pago', async () => {
+  const { servidor, url } = await iniciar();
+  try {
+    const id = await crearJornada(url);
+    const creado = await crearPedido(url, id, 'Cliente Pago');
+
+    const res = await put(url, `/workdays/${id}/orders/${creado.id}`, {
+      customerName: 'Cliente Pago',
+      addressText: 'Calle 1 # 2-3',
+      paymentStatus: 'PAID',
+    });
+
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).paymentStatus, 'PAID');
+  } finally {
+    servidor.close();
+  }
+});
+
+test('PUT orders sin addressText responde 400 y no modifica el pedido', async () => {
+  const { servidor, url } = await iniciar();
+  try {
+    const id = await crearJornada(url);
+    const creado = await crearPedido(url, id, 'Cliente Estable');
+
+    const res = await put(url, `/workdays/${id}/orders/${creado.id}`, { customerName: 'Otro nombre' });
+    assert.equal(res.status, 400);
+
+    const despues = await (await get(url, `/workdays/${id}/orders/${creado.id}`)).json();
+    assert.equal(despues.customerName, 'Cliente Estable');
+  } finally {
+    servidor.close();
+  }
+});
+
+test('PUT orders responde 404 si el pedido no existe', async () => {
+  const { servidor, url } = await iniciar();
+  try {
+    const id = await crearJornada(url);
+    const res = await put(url, `/workdays/${id}/orders/999`, {
+      customerName: 'Cliente',
+      addressText: 'Calle 1',
+    });
+
+    assert.equal(res.status, 404);
+  } finally {
+    servidor.close();
+  }
+});
+
+test('DELETE orders responde 204 y el pedido deja de existir', async () => {
+  const { servidor, url } = await iniciar();
+  try {
+    const id = await crearJornada(url);
+    const creado = await crearPedido(url, id, 'Cliente Borrable');
+
+    const res = await eliminar(url, `/workdays/${id}/orders/${creado.id}`);
+    assert.equal(res.status, 204);
+
+    const despues = await get(url, `/workdays/${id}/orders/${creado.id}`);
+    assert.equal(despues.status, 404);
+  } finally {
+    servidor.close();
+  }
+});
+
+test('PUT y DELETE en una jornada cerrada responden 409', async () => {
+  const { servidor, db, url } = await iniciar();
+  try {
+    const id = await crearJornada(url);
+    const creado = await crearPedido(url, id, 'Cliente Cerrado');
+    // Todavía no existe el endpoint para cerrar jornadas: se cierra directo en la BD de prueba
+    db.prepare("UPDATE workdays SET status = 'CLOSED' WHERE id = ?").run(id);
+
+    const editar = await put(url, `/workdays/${id}/orders/${creado.id}`, {
+      customerName: 'Intento',
+      addressText: 'Calle 1',
+    });
+    assert.equal(editar.status, 409);
+
+    const borrar = await eliminar(url, `/workdays/${id}/orders/${creado.id}`);
+    assert.equal(borrar.status, 409);
+  } finally {
+    servidor.close();
+  }
+});
