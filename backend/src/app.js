@@ -6,6 +6,7 @@ const express = require('express');
 const { createDatabase } = require('./db/database');
 const { ApiError } = require('./errors');
 const { crearRutasJornadas } = require('./routes/workdays.routes');
+const { crearRutasPedidos } = require('./routes/orders.routes');
 
 // Fábrica de la aplicación: cada llamada devuelve una app nueva e independiente.
 // Recibe la base de datos; por defecto usa una en memoria (útil en pruebas).
@@ -24,8 +25,12 @@ function crearApp(db = createDatabase(':memory:')) {
     });
   });
 
-  // Rutas de jornadas (Fase 6). Los pedidos se montarán después.
-  app.use('/workdays', crearRutasJornadas(db));
+    // Rutas de jornadas (Fase 6)
+    app.use('/workdays', crearRutasJornadas(db));
+
+    // Rutas de pedidos, anidadas dentro de una jornada
+    app.use('/workdays/:workdayId/orders', crearRutasPedidos(db));
+
 
   // Ruta no encontrada: responde 404 con el formato de error de la API
   app.use((req, res) => {

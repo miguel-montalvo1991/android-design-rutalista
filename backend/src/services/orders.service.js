@@ -1,0 +1,111 @@
+// backend/src/services/orders.service.js
+// Validación y reglas de negocio de los pedidos.
+
+const { ApiError } = require('../errors');
+
+// Lista controlada: debe coincidir con el CHECK de schema.sql y el enum de la app
+const ESTADOS_PAGO = ['PAID', 'COLLECT_ON_DELIVERY', 'PENDING_CONFIRMATION', 'NOT_APPLICABLE'];
+
+const error400 = (mensaje) => new ApiError(400, 'VALIDATION_ERROR', mensaje);
+
+// Texto obligatorio: string no vacío y con longitud máxima
+function textoObligatorio(cuerpo, campo, max) {
+  const valor = cuerpo[campo];
+  if (typeof valor !== 'string' || valor.trim() === '') {
+    throw error400(`El campo "${campo}" es obligatorio`);
+  }
+  if (valor.trim().length > max) {
+    throw error400(`El campo "${campo}" no puede superar ${max} caracteres`);
+  }
+  return valor.trim();
+}
+
+// Texto opcional: devuelve null si no vino o está vacío
+function textoOpcional(cuerpo, campo, max) {
+  const valor = cuerpo[campo];
+  if (valor === undefined || valor === null || valor === '') return null;
+  if (typeof valor !== 'string') throw error400(`El campo "${campo}" debe ser texto`);
+  if (valor.trim().length > max) {
+    throw error400(`El campo "${campo}" no puede superar ${max} caracteres`);
+  }
+  return valor.trim() || null;
+}
+
+// Teléfono opcional: acepta espacios, guiones y paréntesis; exige 7 a 15 dígitos (con "+" opcional)
+function telefonoOpcional(cuerpo) {
+  const telefono = textoOpcional(cuerpo, 'phone', 30);
+  if (telefono === null) return null;
+  if (!/^\+?\d{7,15}$/.test(telefono.replace(/[\s\-()]/g, ''))) {
+    throw error400('El campo "phone" no es un teléfono válido');
+  }
+  return telefono;
+}
+
+// Fecha límite opcional: debe ser una fecha válida; se guarda en ISO 8601
+function fechaOpcional(cuerpo, campo) {
+  const valor = cuerpo[campo];
+  if (valor === undefined || valor === null || valor === '') return null;
+  const ms = typeof valor === 'string' ? Date.parse(valor) : NaN;
+  if (Number.isNaN(ms)) throw error400(`El campo "${campo}" debe ser una fecha válida (ISO 8601)`);
+  return new Date(ms).toISOString();
+}
+
+// Coordenadas opcionales: ambas o ninguna, dentro de rango
+function coordenadasOpcionales(cuerpo) {
+  const { latitude, longitude } = cuerpo;
+  const hayLat = latitude !== undefined && latitude !== null;
+  const hayLon = longitude !== undefined && longitude !== null;
+
+  if (!hayLat && !hayLon) return { latitude: null, longitude: null };
+  if (hayLat !== hayLon) throw error400('Debe enviar "latitude" y "longitude" juntas');
+
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+    throw error400('El campo "latitude" debe ser un número entre -90 y 90');
+  }
+  if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    throw error400('El campo "longitude" debe ser un número entre -180 y 180');
+  }
+  return { latitude, longitude };
+}
+
+function crearServicioPedidos(repositorioPedidos, repositorioJornadas) {
+  return {
+    crear(workdayIdTexto, cuerpo = {}) {
+      // 1. El id de la jornada viene en la URL como texto
+      if (!/^[1-9]\d*$/.test(workdayIdTexto)) {
+        throw error400('El id de la jornada debe ser un número entero positivo');
+      }
+
+      // 2. La jornada debe existir y estar abierta
+      const jornada = repositorioJornadas.obtener(Number(workdayIdTexto));
+      if (!jornada) throw new ApiError(404, 'NOT_FOUND', `No existe la jornada ${workdayIdTexto}`);
+      if (jornada.status !== 'OPEN') {
+        throw new ApiError(409, 'WORKDAY_CLOSED', 'La jornada está cerrada y no admite pedidos nuevos');
+      }
+
+      // 3. Estado de pago: si no se envía, queda pendiente de confirmar (nunca se asume pagado)
+      const paymentStatus = cuerpo.paymentStatus ?? 'PENDING_CONFIRMATION';
+      if (!ESTADOS_PAGO.includes(paymentStatus)) {
+        throw error400(`"paymentStatus" debe ser uno de: ${ESTADOS_PAGO.join(', ')}`);
+      }
+
+      // 4. Valida el resto de campos y guarda
+      return repositorioPedidos.crear({
+        workdayId: jornada.id,
+        customerName: textoObligatorio(cuerpo, 'customerName', 100),
+        phone: telefonoOpcional(cuerpo),
+        addressText: textoObligatorio(cuerpo, 'addressText', 200),
+        neighborhood: textoOpcional(cuerpo, 'neighborhood', 100),
+        municipality: textoOpcional(cuerpo, 'municipality', 100),
+        ...coordenadasOpcionales(cuerpo),
+        productDescription: textoOpcional(cuerpo, 'productDescription', 300),
+        paymentStatus,
+        deadlineAt: fechaOpcional(cuerpo, 'deadlineAt'),
+        notes: textoOpcional(cuerpo, 'notes', 500),
+        sourceText: textoOpcional(cuerpo, 'sourceText', 2000),
+      });
+    },
+  };
+}
+
+module.exports = { crearServicioPedidos };
