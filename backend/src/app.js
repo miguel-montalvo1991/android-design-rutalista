@@ -3,9 +3,13 @@
 // Separarla de server.js permite probarla sin ocupar un puerto fijo.
 
 const express = require('express');
+const { createDatabase } = require('./db/database');
+const { ApiError } = require('./errors');
+const { crearRutasJornadas } = require('./routes/workdays.routes');
 
-// Fábrica de la aplicación: cada llamada devuelve una app nueva e independiente
-function crearApp() {
+// Fábrica de la aplicación: cada llamada devuelve una app nueva e independiente.
+// Recibe la base de datos; por defecto usa una en memoria (útil en pruebas).
+function crearApp(db = createDatabase(':memory:')) {
   const app = express();
 
   // Permite leer cuerpos JSON en las peticiones (POST y PUT)
@@ -20,7 +24,8 @@ function crearApp() {
     });
   });
 
-  // Aquí se montarán las rutas de jornadas y pedidos (Fase 6)
+  // Rutas de jornadas (Fase 6). Los pedidos se montarán después.
+  app.use('/workdays', crearRutasJornadas(db));
 
   // Ruta no encontrada: responde 404 con el formato de error de la API
   app.use((req, res) => {
@@ -34,6 +39,13 @@ function crearApp() {
 
   // Manejador de errores: Express 5 envía aquí también los errores de funciones async
   app.use((err, req, res, next) => {
+    // Errores controlados por nosotros: se devuelven tal cual (código y mensaje claros)
+    if (err instanceof ApiError) {
+      return res.status(err.status).json({
+        error: { code: err.code, message: err.message },
+      });
+    }
+
     // Los errores de cliente (ej. JSON mal formado) traen status 4xx; el resto se trata como 500
     const status = err.status || err.statusCode || 500;
 
