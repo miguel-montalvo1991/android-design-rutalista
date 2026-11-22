@@ -141,3 +141,100 @@ test('POST orders en una jornada cerrada responde 409', async () => {
     servidor.close();
   }
 });
+
+// GET simple
+function get(url, ruta) {
+  return fetch(`${url}${ruta}`);
+}
+
+// Crea un pedido de prueba en la jornada indicada y devuelve el pedido creado
+async function crearPedido(url, workdayId, nombre) {
+  const res = await post(url, `/workdays/${workdayId}/orders`, {
+    customerName: nombre,
+    addressText: 'Calle 1 # 2-3',
+  });
+  return res.json();
+}
+
+test('GET orders responde 200 con lista vacía si la jornada no tiene pedidos', async () => {
+  const { servidor, url } = await iniciar();
+  try {
+    const id = await crearJornada(url);
+    const res = await get(url, `/workdays/${id}/orders`);
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), []);
+  } finally {
+    servidor.close();
+  }
+});
+
+test('GET orders lista solo los pedidos de esa jornada', async () => {
+  const { servidor, url } = await iniciar();
+  try {
+    const jornadaA = await crearJornada(url);
+    const jornadaB = await crearJornada(url);
+    await crearPedido(url, jornadaA, 'Cliente A1');
+    await crearPedido(url, jornadaA, 'Cliente A2');
+    await crearPedido(url, jornadaB, 'Cliente B1');
+
+    const lista = await (await get(url, `/workdays/${jornadaA}/orders`)).json();
+
+    assert.equal(lista.length, 2);
+    assert.deepEqual(lista.map((p) => p.customerName), ['Cliente A1', 'Cliente A2']);
+  } finally {
+    servidor.close();
+  }
+});
+
+test('GET orders/:id devuelve el pedido creado', async () => {
+  const { servidor, url } = await iniciar();
+  try {
+    const id = await crearJornada(url);
+    const pedido = await crearPedido(url, id, 'Cliente Uno');
+
+    const res = await get(url, `/workdays/${id}/orders/${pedido.id}`);
+    const cuerpo = await res.json();
+
+    assert.equal(res.status, 200);
+    assert.equal(cuerpo.id, pedido.id);
+    assert.equal(cuerpo.customerName, 'Cliente Uno');
+  } finally {
+    servidor.close();
+  }
+});
+
+test('GET orders/:id responde 404 si el pedido no existe o es de otra jornada', async () => {
+  const { servidor, url } = await iniciar();
+  try {
+    const jornadaA = await crearJornada(url);
+    const jornadaB = await crearJornada(url);
+    const pedido = await crearPedido(url, jornadaA, 'Cliente A');
+
+    // Pedido inexistente
+    const noExiste = await get(url, `/workdays/${jornadaA}/orders/999`);
+    assert.equal(noExiste.status, 404);
+
+    // El pedido existe, pero pertenece a la jornada A, no a la B
+    const otraJornada = await get(url, `/workdays/${jornadaB}/orders/${pedido.id}`);
+    assert.equal(otraJornada.status, 404);
+  } finally {
+    servidor.close();
+  }
+});
+
+test('GET orders valida los ids y la existencia de la jornada', async () => {
+  const { servidor, url } = await iniciar();
+  try {
+    const id = await crearJornada(url);
+
+    const jornadaInexistente = await get(url, '/workdays/999/orders');
+    assert.equal(jornadaInexistente.status, 404);
+
+    const pedidoInvalido = await get(url, `/workdays/${id}/orders/abc`);
+    assert.equal(pedidoInvalido.status, 400);
+    assert.equal((await pedidoInvalido.json()).error.code, 'VALIDATION_ERROR');
+  } finally {
+    servidor.close();
+  }
+});

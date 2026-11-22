@@ -69,27 +69,36 @@ function coordenadasOpcionales(cuerpo) {
 }
 
 function crearServicioPedidos(repositorioPedidos, repositorioJornadas) {
+  // El id llega como texto en la URL: debe ser un entero positivo (ej. "3", no "abc" ni "1.5")
+  function validarId(texto, nombre) {
+    if (!/^[1-9]\d*$/.test(texto)) {
+      throw error400(`El id ${nombre} debe ser un número entero positivo`);
+    }
+    return Number(texto);
+  }
+
+  // Valida el id de la jornada y comprueba que exista (abierta o cerrada)
+  function obtenerJornada(workdayIdTexto) {
+    const jornada = repositorioJornadas.obtener(validarId(workdayIdTexto, 'de la jornada'));
+    if (!jornada) throw new ApiError(404, 'NOT_FOUND', `No existe la jornada ${workdayIdTexto}`);
+    return jornada;
+  }
+
   return {
     crear(workdayIdTexto, cuerpo = {}) {
-      // 1. El id de la jornada viene en la URL como texto
-      if (!/^[1-9]\d*$/.test(workdayIdTexto)) {
-        throw error400('El id de la jornada debe ser un número entero positivo');
-      }
-
-      // 2. La jornada debe existir y estar abierta
-      const jornada = repositorioJornadas.obtener(Number(workdayIdTexto));
-      if (!jornada) throw new ApiError(404, 'NOT_FOUND', `No existe la jornada ${workdayIdTexto}`);
+      // 1. La jornada debe existir y estar abierta
+      const jornada = obtenerJornada(workdayIdTexto);
       if (jornada.status !== 'OPEN') {
         throw new ApiError(409, 'WORKDAY_CLOSED', 'La jornada está cerrada y no admite pedidos nuevos');
       }
 
-      // 3. Estado de pago: si no se envía, queda pendiente de confirmar (nunca se asume pagado)
+      // 2. Estado de pago: si no se envía, queda pendiente de confirmar (nunca se asume pagado)
       const paymentStatus = cuerpo.paymentStatus ?? 'PENDING_CONFIRMATION';
       if (!ESTADOS_PAGO.includes(paymentStatus)) {
         throw error400(`"paymentStatus" debe ser uno de: ${ESTADOS_PAGO.join(', ')}`);
       }
 
-      // 4. Valida el resto de campos y guarda
+      // 3. Valida el resto de campos y guarda
       return repositorioPedidos.crear({
         workdayId: jornada.id,
         customerName: textoObligatorio(cuerpo, 'customerName', 100),
@@ -104,6 +113,24 @@ function crearServicioPedidos(repositorioPedidos, repositorioJornadas) {
         notes: textoOpcional(cuerpo, 'notes', 500),
         sourceText: textoOpcional(cuerpo, 'sourceText', 2000),
       });
+    },
+
+    // Lista los pedidos de una jornada (también las cerradas, para consultar el historial)
+    listar(workdayIdTexto) {
+      const jornada = obtenerJornada(workdayIdTexto);
+      return repositorioPedidos.listarPorJornada(jornada.id);
+    },
+
+    // Consulta un pedido concreto de una jornada
+    obtener(workdayIdTexto, orderIdTexto) {
+      const jornada = obtenerJornada(workdayIdTexto);
+      const orderId = validarId(orderIdTexto, 'del pedido');
+
+      const pedido = repositorioPedidos.obtenerEnJornada(jornada.id, orderId);
+      if (!pedido) {
+        throw new ApiError(404, 'NOT_FOUND', `No existe el pedido ${orderIdTexto} en la jornada ${workdayIdTexto}`);
+      }
+      return pedido;
     },
   };
 }

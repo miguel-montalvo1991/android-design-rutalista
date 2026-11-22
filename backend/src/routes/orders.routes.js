@@ -16,7 +16,9 @@ function crearRutasPedidos(db) {
 
   // mergeParams: permite leer :workdayId definido en app.js
   const router = Router({ mergeParams: true });
-  router.post('/', controlador.crear); // POST /workdays/:workdayId/orders
+  router.post('/', controlador.crear);     // POST /workdays/:workdayId/orders
+  router.get('/', controlador.listar);     // GET  /workdays/:workdayId/orders
+  router.get('/:id', controlador.obtener); // GET  /workdays/:workdayId/orders/:id
   return router;
 }
 

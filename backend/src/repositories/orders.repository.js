@@ -36,11 +36,35 @@ function crearRepositorioPedidos(db) {
   `);
   const buscarPorId = db.prepare('SELECT * FROM delivery_orders WHERE id = ?');
 
+  // Pedidos de una jornada: primero los que ya tienen posición (de menor a mayor),
+  // y al final los que aún no la tienen, por orden de creación
+  const listarDeJornada = db.prepare(`
+    SELECT * FROM delivery_orders
+    WHERE workday_id = ?
+    ORDER BY position IS NULL, position ASC, id ASC
+  `);
+
+  // Un pedido solo cuenta si pertenece a esa jornada
+  const buscarEnJornada = db.prepare(
+    'SELECT * FROM delivery_orders WHERE id = ? AND workday_id = ?'
+  );
+
   return {
     // Inserta el pedido y devuelve el registro completo ya guardado
     crear(datos) {
       const resultado = insertar.run(datos);
       return aModelo(buscarPorId.get(resultado.lastInsertRowid));
+    },
+
+    // Devuelve los pedidos de la jornada (lista vacía si no tiene)
+    listarPorJornada(workdayId) {
+      return listarDeJornada.all(workdayId).map(aModelo);
+    },
+
+    // Devuelve el pedido o null si no existe en esa jornada
+    obtenerEnJornada(workdayId, orderId) {
+      const fila = buscarEnJornada.get(orderId, workdayId);
+      return fila ? aModelo(fila) : null;
     },
   };
 }
