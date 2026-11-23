@@ -1,5 +1,6 @@
 // backend/test/orders.test.js
-// Pruebas de POST /workdays/:workdayId/orders, con base de datos en memoria.
+// Pruebas de los endpoints de pedidos (POST, GET, PUT, DELETE y PATCH de estado),
+// con base de datos en memoria.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -25,10 +26,51 @@ function post(url, ruta, cuerpo) {
   });
 }
 
+// GET simple
+function get(url, ruta) {
+  return fetch(`${url}${ruta}`);
+}
+
+// PUT con cuerpo JSON
+function put(url, ruta, cuerpo) {
+  return fetch(`${url}${ruta}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cuerpo),
+  });
+}
+
+// PATCH con cuerpo JSON
+function patch(url, ruta, cuerpo) {
+  return fetch(`${url}${ruta}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cuerpo),
+  });
+}
+
+// DELETE simple
+function eliminar(url, ruta) {
+  return fetch(`${url}${ruta}`, { method: 'DELETE' });
+}
+
 // Crea una jornada y devuelve su id
 async function crearJornada(url) {
   return (await (await post(url, '/workdays', { name: 'Jornada de prueba' })).json()).id;
 }
+
+// Crea un pedido de prueba en la jornada indicada y devuelve el pedido creado
+async function crearPedido(url, workdayId, nombre) {
+  const res = await post(url, `/workdays/${workdayId}/orders`, {
+    customerName: nombre,
+    addressText: 'Calle 1 # 2-3',
+  });
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// POST /workdays/:workdayId/orders
+// ---------------------------------------------------------------------------
 
 test('POST orders con datos mínimos responde 201 y estados por defecto seguros', async () => {
   const { servidor, url } = await iniciar();
@@ -142,19 +184,9 @@ test('POST orders en una jornada cerrada responde 409', async () => {
   }
 });
 
-// GET simple
-function get(url, ruta) {
-  return fetch(`${url}${ruta}`);
-}
-
-// Crea un pedido de prueba en la jornada indicada y devuelve el pedido creado
-async function crearPedido(url, workdayId, nombre) {
-  const res = await post(url, `/workdays/${workdayId}/orders`, {
-    customerName: nombre,
-    addressText: 'Calle 1 # 2-3',
-  });
-  return res.json();
-}
+// ---------------------------------------------------------------------------
+// GET /workdays/:workdayId/orders y /orders/:id
+// ---------------------------------------------------------------------------
 
 test('GET orders responde 200 con lista vacía si la jornada no tiene pedidos', async () => {
   const { servidor, url } = await iniciar();
@@ -239,19 +271,9 @@ test('GET orders valida los ids y la existencia de la jornada', async () => {
   }
 });
 
-// PUT con cuerpo JSON
-function put(url, ruta, cuerpo) {
-  return fetch(`${url}${ruta}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(cuerpo),
-  });
-}
-
-// DELETE simple
-function eliminar(url, ruta) {
-  return fetch(`${url}${ruta}`, { method: 'DELETE' });
-}
+// ---------------------------------------------------------------------------
+// PUT y DELETE /workdays/:workdayId/orders/:id
+// ---------------------------------------------------------------------------
 
 test('PUT orders actualiza los datos y conserva el estado de pago si no se envía', async () => {
   const { servidor, url } = await iniciar();
@@ -366,6 +388,114 @@ test('PUT y DELETE en una jornada cerrada responden 409', async () => {
 
     const borrar = await eliminar(url, `/workdays/${id}/orders/${creado.id}`);
     assert.equal(borrar.status, 409);
+  } finally {
+    servidor.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /workdays/:workdayId/orders/:id/status
+// ---------------------------------------------------------------------------
+
+test('PATCH status cambia deliveryStatus sin alterar pago ni datos del pedido', async () => {
+  const { servidor, url } = await iniciar();
+  try {
+    const id = await crearJornada(url);
+    const creado = await crearPedido(url, id, 'Cliente Entrega');
+
+    const res = await patch(url, `/workdays/${id}/orders/${creado.id}/status`, {
+      deliveryStatus: 'DELIVERED',
+    });
+    const pedido = await res.json();
+
+    assert.equal(res.status, 200);
+    assert.equal(pedido.deliveryStatus, 'DELIVERED');
+    assert.equal(pedido.paymentStatus, 'PENDING_CONFIRMATION'); // el pago no se toca
+    assert.equal(pedido.customerName, 'Cliente Entrega');
+    assert.equal(pedido.addressText, 'Calle 1 # 2-3');
+  } finally {
+    servidor.close();
+  }
+});
+
+test('PATCH status cambia entrega y pago a la vez y quedan guardados', async () => {
+  const { servidor, url } = await iniciar();
+  try {
+    const id = await crearJornada(url);
+    const creado = await crearPedido(url, id, 'Cliente Doble');
+
+    const res = await patch(url, `/workdays/${id}/orders/${creado.id}/status`, {
+      deliveryStatus: 'FAILED',
+      paymentStatus: 'NOT_APPLICABLE',
+    });
+    assert.equal(res.status, 200);
+
+    const despues = await (await get(url, `/workdays/${id}/orders/${creado.id}`)).json();
+    assert.equal(despues.deliveryStatus, 'FAILED');
+    assert.equal(despues.paymentStatus, 'NOT_APPLICABLE');
+  } finally {
+    servidor.close();
+  }
+});
+
+test('PATCH status responde 400 con estado inválido o sin ningún estado y no modifica el pedido', async () => {
+  const { servidor, url } = await iniciar();
+  try {
+    const id = await crearJornada(url);
+    const creado = await crearPedido(url, id, 'Cliente Validado');
+    const ruta = `/workdays/${id}/orders/${creado.id}/status`;
+
+    const invalido = await patch(url, ruta, { deliveryStatus: 'VOLANDO' });
+    assert.equal(invalido.status, 400);
+    assert.equal((await invalido.json()).error.code, 'VALIDATION_ERROR');
+
+    const vacio = await patch(url, ruta, {});
+    assert.equal(vacio.status, 400);
+
+    const despues = await (await get(url, `/workdays/${id}/orders/${creado.id}`)).json();
+    assert.equal(despues.deliveryStatus, 'PENDING'); // sigue igual
+  } finally {
+    servidor.close();
+  }
+});
+
+test('PATCH status responde 404 si el pedido no existe o es de otra jornada', async () => {
+  const { servidor, url } = await iniciar();
+  try {
+    const jornadaA = await crearJornada(url);
+    const jornadaB = await crearJornada(url);
+    const pedido = await crearPedido(url, jornadaA, 'Cliente A');
+
+    // Pedido inexistente
+    const noExiste = await patch(url, `/workdays/${jornadaA}/orders/999/status`, {
+      deliveryStatus: 'DELIVERED',
+    });
+    assert.equal(noExiste.status, 404);
+
+    // El pedido existe, pero pertenece a la jornada A, no a la B
+    const otraJornada = await patch(url, `/workdays/${jornadaB}/orders/${pedido.id}/status`, {
+      deliveryStatus: 'DELIVERED',
+    });
+    assert.equal(otraJornada.status, 404);
+  } finally {
+    servidor.close();
+  }
+});
+
+test('PATCH status en una jornada cerrada responde 409', async () => {
+  const { servidor, db, url } = await iniciar();
+  try {
+    const id = await crearJornada(url);
+    const creado = await crearPedido(url, id, 'Cliente Cerrado');
+    // Todavía no existe el endpoint para cerrar jornadas: se cierra directo en la BD de prueba
+    db.prepare("UPDATE workdays SET status = 'CLOSED' WHERE id = ?").run(id);
+
+    const res = await patch(url, `/workdays/${id}/orders/${creado.id}/status`, {
+      deliveryStatus: 'DELIVERED',
+    });
+
+    assert.equal(res.status, 409);
+    assert.equal((await res.json()).error.code, 'WORKDAY_CLOSED');
   } finally {
     servidor.close();
   }

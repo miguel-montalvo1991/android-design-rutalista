@@ -24,6 +24,10 @@ function crearControladorPedidos(servicio) {
       servicio.eliminar(req.params.workdayId, req.params.id);
       res.status(204).end(); // 204 = hecho, sin cuerpo en la respuesta
     },
+
+    cambiarEstado(req, res) {
+      res.json(servicio.cambiarEstado(req.params.workdayId, req.params.id, req.body));
+    },
   };
 }
 

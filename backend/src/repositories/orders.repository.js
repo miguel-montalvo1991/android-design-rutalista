@@ -69,6 +69,14 @@ function crearRepositorioPedidos(db) {
 
   const borrar = db.prepare('DELETE FROM delivery_orders WHERE id = ? AND workday_id = ?');
 
+  // Cambia solo los estados. COALESCE conserva el valor actual cuando llega null
+  const actualizarEstado = db.prepare(`
+    UPDATE delivery_orders SET
+      delivery_status = COALESCE(@deliveryStatus, delivery_status),
+      payment_status  = COALESCE(@paymentStatus, payment_status)
+    WHERE id = @id AND workday_id = @workdayId
+  `);
+
   return {
     // Inserta el pedido y devuelve el registro completo ya guardado
     crear(datos) {
@@ -96,6 +104,12 @@ function crearRepositorioPedidos(db) {
     // Borra el pedido; devuelve true si existía y se borró
     eliminar(workdayId, orderId) {
       return borrar.run(orderId, workdayId).changes > 0;
+    },
+
+    // Guarda el nuevo estado de entrega y/o de pago y devuelve el pedido actualizado
+    cambiarEstado(datos) {
+      actualizarEstado.run(datos);
+      return aModelo(buscarPorId.get(datos.id));
     },
   };
 }

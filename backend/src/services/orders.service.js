@@ -6,6 +6,9 @@ const { ApiError } = require('../errors');
 // Lista controlada: debe coincidir con el CHECK de schema.sql y el enum de la app
 const ESTADOS_PAGO = ['PAID', 'COLLECT_ON_DELIVERY', 'PENDING_CONFIRMATION', 'NOT_APPLICABLE'];
 
+// Estados de entrega permitidos: deben coincidir con el CHECK de schema.sql
+const ESTADOS_ENTREGA = ['PENDING', 'IN_PROGRESS', 'DELIVERED', 'FAILED', 'RESCHEDULED'];
+
 const error400 = (mensaje) => new ApiError(400, 'VALIDATION_ERROR', mensaje);
 
 // Texto obligatorio: string no vacío y con longitud máxima
@@ -168,6 +171,33 @@ function crearServicioPedidos(repositorioPedidos, repositorioJornadas) {
       const jornada = obtenerJornadaAbierta(workdayIdTexto);
       const pedido = obtenerPedido(jornada, orderIdTexto);
       repositorioPedidos.eliminar(jornada.id, pedido.id);
+    },
+
+    // Cambia el estado de entrega y/o de pago, sin tocar los demás datos del pedido
+    cambiarEstado(workdayIdTexto, orderIdTexto, cuerpo = {}) {
+      const jornada = obtenerJornadaAbierta(workdayIdTexto);
+      const pedido = obtenerPedido(jornada, orderIdTexto);
+
+      // null significa "no cambiar este estado"
+      const deliveryStatus = cuerpo.deliveryStatus ?? null;
+      const paymentStatus = cuerpo.paymentStatus ?? null;
+
+      if (deliveryStatus === null && paymentStatus === null) {
+        throw error400('Debe enviar "deliveryStatus", "paymentStatus" o ambos');
+      }
+      if (deliveryStatus !== null && !ESTADOS_ENTREGA.includes(deliveryStatus)) {
+        throw error400(`"deliveryStatus" debe ser uno de: ${ESTADOS_ENTREGA.join(', ')}`);
+      }
+      if (paymentStatus !== null && !ESTADOS_PAGO.includes(paymentStatus)) {
+        throw error400(`"paymentStatus" debe ser uno de: ${ESTADOS_PAGO.join(', ')}`);
+      }
+
+      return repositorioPedidos.cambiarEstado({
+        id: pedido.id,
+        workdayId: jornada.id,
+        deliveryStatus,
+        paymentStatus,
+      });
     },
   };
 }
