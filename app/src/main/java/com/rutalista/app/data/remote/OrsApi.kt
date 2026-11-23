@@ -14,7 +14,7 @@ import retrofit2.http.Query
 interface OrsApi {
 
     // Búsqueda de direcciones
-    @GET("pelias/v1/search")
+    @GET("geocode/search")
     suspend fun geocodeSearch(
         @Query("api_key") apiKey: String,
         @Query("text") texto: String,
@@ -25,7 +25,7 @@ interface OrsApi {
     ): GeocodeResponse
 
     // Geocodificación inversa
-    @GET("pelias/v1/reverse")
+    @GET("geocode/reverse")
     suspend fun geocodeReverse(
         @Query("api_key") apiKey: String,
         @Query("point.lon") lon: Double,
@@ -34,14 +34,14 @@ interface OrsApi {
     ): GeocodeResponse
 
     // Cálculo de ruta
-    @POST("openrouteservice/v2/directions/driving-car/json")
+    @POST("v2/directions/driving-car/json")
     suspend fun calcularRuta(
         @Header("Authorization") apiKey: String,
         @Body solicitud: RutaRequest
     ): RutaResponse
 
-    // Optimización de destinos
-    @POST("vroom/v0")
+    // Optimización de destinos (Vroom engine de ORS)
+    @POST("optimization")
     suspend fun optimizarRuta(
         @Header("Authorization") apiKey: String,
         @Body solicitud: OptimizacionRequest

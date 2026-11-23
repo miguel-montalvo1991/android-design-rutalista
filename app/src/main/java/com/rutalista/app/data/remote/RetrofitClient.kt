@@ -7,7 +7,7 @@ object RetrofitClient {
 
     val api: OrsApi by lazy {
         Retrofit.Builder()
-            .baseUrl("https://api.heigit.org/")
+            .baseUrl("https://api.openrouteservice.org/")
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(OrsApi::class.java)
