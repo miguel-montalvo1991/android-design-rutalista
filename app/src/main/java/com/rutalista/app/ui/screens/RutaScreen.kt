@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -39,7 +40,10 @@ import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RutaScreen(viewModel: RutaViewModel) {
+fun RutaScreen(
+    viewModel: RutaViewModel,
+    onNavigateToReview: (() -> Unit)? = null
+) {
 
     val context = LocalContext.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -54,7 +58,6 @@ fun RutaScreen(viewModel: RutaViewModel) {
     val busqueda by viewModel.busqueda.collectAsState()
     val pedidos by viewModel.pedidos.collectAsState()
     val ruta by viewModel.ruta.collectAsState()
-    val optimizacion by viewModel.optimizacion.collectAsState()
     val ubicacionGpsState by viewModel.ubicacionGps.collectAsState()
 
     // Manejador de permisos de ubicación GPS
@@ -259,38 +262,24 @@ fun RutaScreen(viewModel: RutaViewModel) {
 
                             Spacer(modifier = Modifier.height(8.dp))
 
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(
-                                    onClick = {
-                                        viewModel.establecerOrigen(direccion)
-                                        viewModel.limpiarBusqueda()
-                                        textoBusqueda = ""
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryNavy),
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Establecer Origen", fontSize = 12.sp)
-                                }
-
-                                OutlinedButton(
-                                    onClick = {
-                                        // agregar() devuelve false si el destino
-                                        // ya estaba en la lista; usamos ese resultado para avisar.
-                                        val agregado = viewModel.agregar(direccion)
-                                        Toast.makeText(
-                                            context,
-                                            if (agregado) "Destino agregado" else "Ese destino ya está en la lista",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                        viewModel.limpiarBusqueda()
-                                        textoBusqueda = ""
-                                    },
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Agregar Destino", fontSize = 12.sp)
-                                }
+                            Button(
+                                onClick = {
+                                    val agregado = viewModel.agregar(direccion)
+                                    Toast.makeText(
+                                        context,
+                                        if (agregado) "Destino agregado" else "Ese destino ya está en la lista",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                    viewModel.limpiarBusqueda()
+                                    textoBusqueda = ""
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = PrimaryNavy),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(imageVector = Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Agregar Destino", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -413,34 +402,13 @@ fun RutaScreen(viewModel: RutaViewModel) {
 
             // 4. Lista de Destinos Seleccionados
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Destinos seleccionados (${pedidos.size})",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = PrimaryNavy
-                        )
+                Text(
+                    text = "Destinos seleccionados (${pedidos.size})",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = PrimaryNavy
                     )
-
-                    // Botón rápido para agregar destino mediante GPS o Mapa
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        IconButton(onClick = {
-                            modoSeleccionOrigen = false
-                            indexReemplazarDestino = null
-                            mostrarMapaDialog = true
-                        }) {
-                            Icon(imageVector = Icons.Default.Map, contentDescription = "Agregar en Mapa", tint = PrimaryNavy)
-                        }
-
-                        IconButton(onClick = { solicitarUbicacionGps(esOrigen = false) }) {
-                            Icon(imageVector = Icons.Default.MyLocation, contentDescription = "Agregar por GPS", tint = PrimaryNavy)
-                        }
-                    }
-                }
+                )
             }
 
             if (pedidos.isEmpty()) {
@@ -512,44 +480,28 @@ fun RutaScreen(viewModel: RutaViewModel) {
                 }
             }
 
-            // 5. Botones de Acción (Calcular y Optimizar)
+            // 5. Botón Principal de Acción (Optimizar e Ir a Revisión)
             item {
                 Spacer(modifier = Modifier.height(8.dp))
 
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Button(
-                        onClick = { viewModel.calcularRuta() },
-                        enabled = origen != null && pedidos.isNotEmpty(),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(50.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = PrimaryNavy,
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(14.dp)
-                    ) {
-                        Icon(imageVector = Icons.Default.Navigation, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Calcular Ruta Directa", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    }
-
-                    Button(
-                        onClick = { viewModel.optimizarRuta() },
-                        enabled = origen != null && pedidos.isNotEmpty(),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(50.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = AccentYellow,
-                            contentColor = PrimaryNavy
-                        ),
-                        shape = RoundedCornerShape(14.dp)
-                    ) {
-                        Icon(imageVector = Icons.Default.Directions, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Optimizar Orden de Destinos", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    }
+                Button(
+                    onClick = {
+                        viewModel.optimizarRuta()
+                        onNavigateToReview?.invoke()
+                    },
+                    enabled = origen != null && pedidos.isNotEmpty(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = AccentYellow,
+                        contentColor = PrimaryNavy
+                    ),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Icon(imageVector = Icons.Default.Directions, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Optimizar Orden de Destinos", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
             }
 
@@ -597,7 +549,6 @@ fun RutaScreen(viewModel: RutaViewModel) {
                                     text = "Resultado de la Ruta",
                                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = PrimaryNavy)
                                 )
-                                //  distancia y duración con formato legible
                                 Text("Distancia total: ${formatearDistancia(resultado.summary?.distance ?: 0.0)}")
                                 Text("Duración estimada: ${formatearDuracion(resultado.summary?.duration ?: 0.0)}")
                             }
@@ -605,90 +556,6 @@ fun RutaScreen(viewModel: RutaViewModel) {
                     }
 
                     is RutaUiState.Inicial -> Unit
-                }
-            }
-
-            // 7. Resultado de la Optimización
-            item {
-                when (optimizacion) {
-                    is OptimizacionUiState.Cargando ->
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = SurfaceLight)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text("Optimizando itinerario de recorrido...")
-                            }
-                        }
-
-                    is OptimizacionUiState.Error ->
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-                        ) {
-                            Text(
-                                text = (optimizacion as OptimizacionUiState.Error).mensaje,
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                modifier = Modifier.padding(16.dp)
-                            )
-                        }
-
-                    is OptimizacionUiState.Exito -> {
-                        val resultado = (optimizacion as OptimizacionUiState.Exito).resultado
-
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = SurfaceLight),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(
-                                    text = "Recorrido Optimizado",
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = PrimaryNavy)
-                                )
-
-                                resultado.routes.forEach { recorrido ->
-                                    //  si la API devuelve distancia 0, no se muestra "0,0 km"
-                                    if (recorrido.distance.toDouble() > 0.0) {
-                                        Text("Distancia total: ${formatearDistancia(recorrido.distance.toDouble())}")
-                                    }
-                                    Text("Duración estimada: ${formatearDuracion(recorrido.duration.toDouble())}")
-
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text("Secuencia de paradas sugerida:", fontWeight = FontWeight.Bold)
-
-                                    recorrido.steps.forEach { paso ->
-                                        if (paso.type == "job") {
-                                            val idVal = paso.id ?: 1
-                                            val destIndex = idVal - 1
-                                            val destNombre = pedidos.getOrNull(destIndex)?.texto ?: "Destino #${idVal}"
-                                            Text("• Parada ${idVal}: $destNombre", style = MaterialTheme.typography.bodySmall)
-                                        }
-                                    }
-                                }
-
-                                if (resultado.unassigned.isNotEmpty()) {
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "Advertencia: ${resultado.unassigned.size} destino(s) no pudieron ser asignados.",
-                                        color = MaterialTheme.colorScheme.error,
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    is OptimizacionUiState.Inicial -> Unit
                 }
             }
         }

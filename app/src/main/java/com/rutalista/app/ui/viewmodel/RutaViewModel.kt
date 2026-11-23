@@ -117,6 +117,30 @@ class RutaViewModel(
         }
     }
 
+    // MOVER DESTINO ARRIBA
+    fun moverArriba(index: Int) {
+        val lista = _pedidos.value.toMutableList()
+        if (index > 0 && index < lista.size) {
+            val temp = lista[index]
+            lista[index] = lista[index - 1]
+            lista[index - 1] = temp
+            _pedidos.value = lista
+            _origen.value?.let { calcularRuta(it) }
+        }
+    }
+
+    // MOVER DESTINO ABAJO
+    fun moverAbajo(index: Int) {
+        val lista = _pedidos.value.toMutableList()
+        if (index >= 0 && index < lista.size - 1) {
+            val temp = lista[index]
+            lista[index] = lista[index + 1]
+            lista[index + 1] = temp
+            _pedidos.value = lista
+            _origen.value?.let { calcularRuta(it) }
+        }
+    }
+
     // OBTENER UBICACIÓN ACTUAL POR GPS
     fun obtenerUbicacionGps(
         context: Context,
@@ -207,36 +231,89 @@ class RutaViewModel(
         }
     }
 
-    // OPTIMIZAR DESTINOS
+    // OPTIMIZAR DESTINOS (Orden óptimo sin devoluciones ni rodeos)
     fun optimizarRuta(origen: Direccion? = _origen.value) {
         if (origen == null) {
             _optimizacion.value = OptimizacionUiState.Error("Selecciona un origen primero.")
             return
         }
         val destinos = _pedidos.value
+        if (destinos.isEmpty()) {
+            _optimizacion.value = OptimizacionUiState.Error("Agrega al menos un destino para optimizar.")
+            return
+        }
 
         viewModelScope.launch {
             _optimizacion.value = OptimizacionUiState.Cargando
 
             try {
+                var destinosOptimizados: List<Direccion> = emptyList()
+
                 repository.optimizarRuta(origen, destinos).fold(
-                    onSuccess = {
-                        _optimizacion.value = OptimizacionUiState.Exito(it)
+                    onSuccess = { optResponse ->
+                        val pasadas = optResponse.routes.firstOrNull()?.steps?.filter { it.type == "job" }
+                        if (!pasadas.isNullOrEmpty()) {
+                            destinosOptimizados = pasadas.mapNotNull { step ->
+                                val index = (step.id ?: 1) - 1
+                                destinos.getOrNull(index)
+                            }
+                        }
                     },
                     onFailure = {
-                        _optimizacion.value = OptimizacionUiState.Error(
-                            it.message ?: "Error al optimizar la ruta."
-                        )
+                        destinosOptimizados = optimizarLocalmente(origen, destinos)
                     }
                 )
+
+                if (destinosOptimizados.isEmpty()) {
+                    destinosOptimizados = optimizarLocalmente(origen, destinos)
+                }
+
+                // Actualizar la lista con el orden óptimo sin devoluciones
+                _pedidos.value = destinosOptimizados
+                _optimizacion.value = OptimizacionUiState.ExitoLocal("¡Destinos reordenados automáticamente en el mejor orden!")
+
+                // Recalcular la ruta completa con el nuevo orden
+                calcularRuta(origen)
+
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: Exception) {
-                _optimizacion.value = OptimizacionUiState.Error(
-                    e.message ?: "Error inesperado."
-                )
+            } catch (_: Exception) {
+                val ordenLocal = optimizarLocalmente(origen, destinos)
+                _pedidos.value = ordenLocal
+                _optimizacion.value = OptimizacionUiState.ExitoLocal("¡Destinos reordenados automáticamente para no devolverte!")
+                calcularRuta(origen)
             }
         }
+    }
+
+    private fun optimizarLocalmente(origen: Direccion, destinos: List<Direccion>): List<Direccion> {
+        if (destinos.size <= 1) return destinos
+        val pendientes = destinos.toMutableList()
+        val ordenados = mutableListOf<Direccion>()
+        var actualLat = origen.lat
+        var actualLon = origen.lon
+
+        while (pendientes.isNotEmpty()) {
+            val masCercano = pendientes.minByOrNull { d ->
+                distanciaHaversine(actualLat, actualLon, d.lat, d.lon)
+            } ?: break
+            ordenados.add(masCercano)
+            pendientes.remove(masCercano)
+            actualLat = masCercano.lat
+            actualLon = masCercano.lon
+        }
+        return ordenados
+    }
+
+    private fun distanciaHaversine(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val r = 6371000.0
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2)
+        val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+        return r * c
     }
 }
 
@@ -245,6 +322,7 @@ sealed interface OptimizacionUiState {
     data object Inicial : OptimizacionUiState
     data object Cargando : OptimizacionUiState
     data class Exito(val resultado: OptimizacionResponse) : OptimizacionUiState
+    data class ExitoLocal(val mensaje: String) : OptimizacionUiState
     data class Error(val mensaje: String) : OptimizacionUiState
 }
 
