@@ -11,7 +11,7 @@ Aplicación Android para **domiciliarios independientes** que necesitan organiza
 
 | Recurso | Enlace |
 |---|---|
-| 🎨 Prototipo UI/UX (Google Stitch) | `PEGAR_AQUI_EL_ENLACE_DE_STITCH` |
+| 🎨 Prototipo UI/UX (Google Stitch) | https://stitch.google.com/projects/10905825141307537811 |
 | 🎥 Video de presentación (máx. 5 min) | `PEGAR_AQUI_EL_ENLACE_DEL_VIDEO` |
 | 💻 Repositorio | https://github.com/miguel-montalvo1991/android-design-rutalista |
 
